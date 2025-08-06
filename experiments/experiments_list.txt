@@ -1,0 +1,6 @@
+1) Validating the DocTR segmentation
+2) LayOutLMv3
+3) Qwen-VL further testing
+4) Spacy
+5) Agents
+6) Testing the capabilities of LangChain
