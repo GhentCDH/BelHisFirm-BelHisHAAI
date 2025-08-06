@@ -1,7 +1,7 @@
 # BelHisFirm-BelHisHAAI
 Human and Agentic AI based data extraction workflow for BelHisFirm 
 
-Reference-style: 
+Reference-style:  
 ![alt text][logo]
 
-![logo]: https://github.com/GhentCDH/BelHisFirm-BelHisHAAI/blob/main/assets/Logo.png
+[logo]: https://raw.githubusercontent.com/GhentCDH/BelHisFirm-BelHisHAAI/main/assets/Logo.png
