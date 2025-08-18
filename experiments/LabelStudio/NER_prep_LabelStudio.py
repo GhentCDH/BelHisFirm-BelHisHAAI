@@ -316,7 +316,7 @@ def main(image_path):
                 )
 
                 with open(os.path.join("experiments/LabelStudio", f"qwen_text_transcription_{image_name}_{id}.txt"), "a") as f:
-                    f.write(f"{text[0].strip()} ")
+                    f.write(f"{text[0].strip()}\n")
         print(f"Text transcription for image {id} completed.")
 
 if __name__ == "__main__":
