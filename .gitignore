@@ -1,6 +1,7 @@
 # Custom
 experiments/LabelStudio/qwen_text_transcription_*.txt
 experiments/LabelStudio/png_images/*
+experiments/test/images/*
 
 
 # Byte-compiled / optimized / DLL files
