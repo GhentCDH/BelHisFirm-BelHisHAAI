@@ -7,8 +7,10 @@ import base64
 import io
 from PIL import Image
 import os
+import json
 
 
+"""
 def padd_image(image, color=(255, 255, 255)):
     h, w = image.shape[:2]
     top = (h - 28) // 2
@@ -36,6 +38,9 @@ def split_function(image):
     spine_position = np.argmin(vertical_sum) + w
     image_1 = image[0:h, 0:spine_position]
     image_2 = image[0:h, spine_position:w * 2]
+
+    cv.imwrite('links.png', image_1)
+    cv.imwrite('rechts.png', image_2)
 
     return image_1, image_2
 
@@ -319,5 +324,125 @@ def main(image_path):
                     f.write(f"{text[0].strip()}\n")
         print(f"Text transcription for image {id} completed.")
 
+"""
+
+
+
+def padd_image(image, color=(255, 255, 255)):
+    h, w = image.shape[:2]
+    top = (h - 5) // 2
+    bottom = h - 5 - top
+    left = (w - 5) // 2
+    right = w - 5 - left
+
+    if image.ndim == 2 or (image.ndim == 3 and image.shape[2] == 1):
+        val = int(color if np.isscalar(color) else int(np.mean(color)))
+    else:
+        r, g, b = map(int, color)
+        val = (b, g, r)
+    
+    return cv.copyMakeBorder(image, top, bottom, left, right, cv.BORDER_CONSTANT, value=val)
+
+
+def extract_content(file_path):
+
+    with open(file_path, "r") as f:
+        data = json.load(f)
+        id_to_filename = {img["id"]: os.path.basename(img["file_name"]) for img in data["images"]}
+        id_to_label = {cat["id"]: cat["name"] for cat in data["categories"]}
+        results = [
+            (ann["bbox"], id_to_filename[ann["image_id"]], id_to_label[ann["category_id"]])
+            for ann in data["annotations"]]
+
+    return results
+
+def main(file, image_folder):
+    
+    bbox = extract_content(file)
+
+    image_name = None
+
+    model = Qwen2_5_VLForConditionalGeneration.from_pretrained("Qwen/Qwen2.5-VL-7B-Instruct", torch_dtype="auto", device_map="auto")
+
+    processor = AutoProcessor.from_pretrained("Qwen/Qwen2.5-VL-7B-Instruct", min_pixels=128 * 28 * 28, max_pixels=2056 * 28 * 28)
+    page_list = []
+    
+    for idx, bbox_smol in enumerate(bbox):
+        
+        if image_name != bbox_smol[1]:
+        
+            if image_name != None:
+                with open(os.path.join("experiments/LabelStudio/output", f"transcription_{image_name}_{idx}.txt"), "a") as f:
+                    for ann in page_list:
+                        f.write(str(ann))
+                page_list = []
+            
+        image_name = bbox_smol[1]
+
+        image = cv.imread(os.path.join(image_folder, image_name))
+
+
+        list_of_tags = ["Hoofdtekst", "Bijlagen", "Volmachten/Procurations"]
+        
+        if bbox_smol[2] in list_of_tags:
+        
+            x1 = int(bbox_smol[0][0])
+            y1 = int(bbox_smol[0][1])
+            w = int(bbox_smol[0][2])
+            h = int(bbox_smol[0][3])
+
+            x1, y1 = int(x1), int(y1)
+            x2, y2 = int(x1 + w), int(y1 + h)
+
+
+            cropped_image = image[y1:y2,x1:x2]
+
+            print(image_name)
+
+            padded_image = padd_image(cropped_image)
+
+            crop = base64.b64encode(cv.imencode('.png', padded_image)[1]).decode('utf-8')
+            prompt = (f"Transcribe all text and numbers in the image. Ignore other text artefacts. If no text is present, respond with 'No text found'. ")
+            message = [
+                            {
+                                "role": "user",
+                                "content": [
+                                    {"type": "image", "image": f"data:image/png;base64,{crop}"},
+                                    {"type": "text", "text": prompt},
+                                ],
+                            }
+                        ]
+                
+            text = processor.apply_chat_template(message, tokenize=False, add_generation_prompt=True)
+            image_inputs, video_inputs = process_vision_info(message)
+            inputs = processor(
+                            text=[text],
+                            images=image_inputs,
+                            videos=video_inputs,
+                            padding=True,
+                            return_tensors="pt",
+                        )
+            inputs = inputs.to("cuda")
+
+            generated_ids = model.generate(**inputs, max_new_tokens=512)
+            generated_ids_trimmed = [
+                            out_ids[len(in_ids) :] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+                        ]
+            text = processor.batch_decode(
+                            generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
+                        )
+            cleaned_text = text[0].replace('\n', ' ').replace('\\n', ' ').strip()
+            if not 'No text found' in text:
+                page_list.append(cleaned_text)
+                print(f"[OCR]: {cleaned_text}")
+            
+
+
+        
+
+    
+
+
 if __name__ == "__main__":
-    main("/mnt/UGent_Share/ghentcdh_belhisfirm/Source/Test_Scans_Iguana/TEST UAntwerpen_31072025_400ppi/test-Yves_029_None.tif")
+    main("/home/bas/Documents/Visual Code Repo's/BelHisFirm-BelHisHAAI/experiments/test/project-8-at-2025-08-20-12-41-77d23a8a/result.json", "experiments/test/project-8-at-2025-08-20-12-41-77d23a8a/images")
+

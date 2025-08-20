@@ -2,6 +2,10 @@
 experiments/LabelStudio/qwen_text_transcription_*.txt
 experiments/LabelStudio/png_images/*
 experiments/test/images/*
+experiments/test/notebooks_online/*
+experiments/test/project-8-at-2025-08-20-12-41-77d23a8a/*
+experiments/LabelStudio/output/*
+
 
 
 # Byte-compiled / optimized / DLL files
