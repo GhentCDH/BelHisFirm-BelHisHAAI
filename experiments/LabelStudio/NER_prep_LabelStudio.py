@@ -368,11 +368,11 @@ def main(file, image_folder):
     page_list = []
     
     for idx, bbox_smol in enumerate(bbox):
-        
+
         if image_name != bbox_smol[1]:
         
             if image_name != None:
-                with open(os.path.join("experiments/LabelStudio/output", f"transcription_{image_name}_{idx}.txt"), "a") as f:
+                with open(os.path.join("/mnt/UGent_Share/ghentcdh_belhisfirm/Workspace/LabeledData", f"transcription_{image_name}_{idx}.txt"), "a") as f:
                     for ann in page_list:
                         f.write(str(ann))
                 page_list = []
@@ -382,7 +382,7 @@ def main(file, image_folder):
         image = cv.imread(os.path.join(image_folder, image_name))
 
 
-        list_of_tags = ["Hoofdtekst", "Bijlagen", "Volmachten/Procurations"]
+        list_of_tags = ["Text", "Handtekening"]
         
         if bbox_smol[2] in list_of_tags:
         
@@ -391,11 +391,14 @@ def main(file, image_folder):
             w = int(bbox_smol[0][2])
             h = int(bbox_smol[0][3])
 
-            x1, y1 = int(x1), int(y1)
-            x2, y2 = int(x1 + w), int(y1 + h)
+            x2, y2 = x1 + w, y1 + h
 
+            # Check if box is valid and within image bounds
+            img_h, img_w = image.shape[:2]
+            if x1 < 0 or y1 < 0 or x2 > img_w or y2 > img_h or w <= 0 or h <= 0:
+                continue
 
-            cropped_image = image[y1:y2,x1:x2]
+            cropped_image = image[y1:y2, x1:x2]
 
             print(image_name)
 
@@ -444,5 +447,5 @@ def main(file, image_folder):
 
 
 if __name__ == "__main__":
-    main("/home/bas/Documents/Visual Code Repo's/BelHisFirm-BelHisHAAI/experiments/test/project-8-at-2025-08-20-12-41-77d23a8a/result.json", "experiments/test/project-8-at-2025-08-20-12-41-77d23a8a/images")
+    main("/home/bas/Documents/Visual Code Data/project-8-at-2025-09-02-07-09-853136ae/result.json", "/home/bas/Documents/Visual Code Data/project-8-at-2025-09-02-07-09-853136ae/images")
 

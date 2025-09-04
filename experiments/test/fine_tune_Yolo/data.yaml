@@ -1,0 +1,21 @@
+# Dataset root directory relative to the yolov5 directory
+path: 
+
+# Train/val/test sets: specify directories, *.txt files, or lists
+train: images/train # 128 images for training
+val: images/train # 128 images for validation
+test: # Optional path to test images
+
+# Classes (example using 80 COCO classes)
+names:
+    0: Andere
+    1: List-item
+    2: Page-footer
+    3: Page-header
+    4: Paginanummer
+    5: Section-header
+    6: Tabulair_aandeelhouders
+    7: Tabulair_passiva_activa
+    8: Text
+    9: Title
+    10: Handtekening

@@ -16,9 +16,9 @@ def convert_tiff_to_png(tiff_path, png_path):
     print(f"Converted {tiff_path} to {png_path}")
 
 def main():
-    input_word = os.path.join("/mnt/UGent_Share/ghentcdh_belhisfirm/Source/Test_Scans_Iguana/TEST UAntwerpen_31072025_400ppi", input("Enter the name to the TIFF file: "))
+    input_word = os.path.join("/home/bas/Documents/Clariah+ Demo", input("Enter the name to the TIFF file: "))
     input_name = input_word.split("/")[-1].split(".")[0]
-    output = f"experiments/LabelStudio/png_images/{input_name}.png"
+    output = f"/home/bas/Documents/Clariah+ Demo/{input_name}.png"
     convert_tiff_to_png(input_word, output)
 
 # Run the main function
