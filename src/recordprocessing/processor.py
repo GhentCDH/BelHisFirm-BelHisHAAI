@@ -3,6 +3,7 @@ from ultralytics import YOLO
 from PIL import Image
 import cv2
 import numpy as np
+import easyocr
 
 INPUT_DIR = Path("/home/bas/Documents/Visual Code Data/BelHisHAAI/1909 - JPEG2000")
 OUTPUT_DIR = Path("/home/bas/Documents/Visual Code Data/BelHisHAAI/1909 - JPEG2000/processed")
@@ -15,6 +16,7 @@ def process_images():
 
     # Load model once
     model = YOLO(MODEL_PATH)
+    reader = easyocr.Reader(['en']) 
 
     # Collect all JP2 files
     files = list(INPUT_DIR.rglob("*.jp2"))
