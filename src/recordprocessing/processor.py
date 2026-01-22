@@ -13,6 +13,8 @@ from surya.settings import settings
 INPUT_DIR = Path("/home/bas/Documents/Visual Code Data/BelHisHAAI/test")
 OUTPUT_DIR = Path("/home/bas/Documents/Visual Code Data/BelHisHAAI/test/processed")
 
+
+
 # Regex pattern for valid section headers: starts with one or more digits followed by a dot
 SECTION_HEADER_PATTERN = re.compile(r"^\d+\.—")
 
@@ -27,6 +29,166 @@ def apply_otsu_threshold(image: Image.Image) -> Image.Image:
 def is_valid_section_header(text: str) -> bool:
     """Check if text starts with numbers followed by a dot and a dash (e.g., '1.-', '123.-')."""
     return bool(SECTION_HEADER_PATTERN.match(text.strip().replace(" ", "").replace("\n", "")))
+
+
+def is_sus_table(pred, image_width: int, image_height: int, area_threshold: float = 0.4, confidence_threshold: float = 0.85) -> bool:
+
+    sus_asci = """
+        ⠀⠀⠀⠀⢀⣴⣶⠿⠟⠻⠿⢷⣦⣄⠀⠀⠀
+        ⠀⠀⠀⠀⣾⠏⠀⠀⣠⣤⣤⣤⣬⣿⣷⣄⡀
+        ⠀⢀⣀⣸⡿⠀⠀⣼⡟⠁⠀⠀⠀⠀⠀⠙⣷
+        ⢸⡟⠉⣽⡇⠀⠀⣿⡇⠀⠀⠀⠀⠀⠀⢀⣿
+        ⣾⠇⠀⣿⡇⠀⠀⠘⠿⢶⣶⣤⣤⣶⡶⣿⠋
+        ⣿⠂⠀⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⠃ sus
+        ⣿⡆⠀⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⠀
+        ⢿⡇⠀⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣿⠀
+        ⠘⠻⠷⢿⡇⠀⠀⠀⣴⣶⣶⠶⠖⠀⢸⡟⠀
+        ⠀⠀⠀⢸⣇⠀⠀⠀⣿⡇⣿⡄⠀⢀⣿⠇⠀
+        ⠀⠀⠀⠘⣿⣤⣤⣴⡿⠃⠙⠛⠛⠛⠋⠀⠀
+
+            """
+
+
+
+    """
+    Check if a Table detection is suspicious (likely a false positive).
+
+    Returns True if:
+    - Label is "Table"
+    - Confidence is below threshold
+    - Bbox covers more than area_threshold of the image
+    """
+    if pred.label != "Table":
+        return False
+
+    if pred.confidence >= confidence_threshold:
+        return False
+
+    # Calculate bbox area as fraction of image
+    bbox = pred.bbox
+    bbox_width = bbox[2] - bbox[0]
+    bbox_height = bbox[3] - bbox[1]
+    bbox_area = bbox_width * bbox_height
+    image_area = image_width * image_height
+    area_fraction = bbox_area / image_area
+
+    print(sus_asci)
+
+    return area_fraction > area_threshold
+
+
+def find_spine_position(image_array: np.ndarray, search_margin: int = 50) -> int | None:
+    """
+    Find the spine/split position in an image by looking for a dark vertical line in the middle.
+
+    Args:
+        image_array: Grayscale numpy array of the image
+        search_margin: Number of pixels around the center to search
+
+    Returns:
+        X coordinate of the spine position, or None if no clear spine found
+    """
+    if len(image_array.shape) != 2:
+        gray = cv.cvtColor(image_array, cv.COLOR_BGR2GRAY)
+    else:
+        gray = image_array
+
+    h, w = gray.shape
+    half_w = w // 2
+
+    # Extract a vertical strip around the center
+    left_bound = max(0, half_w - search_margin)
+    right_bound = min(w, half_w + search_margin)
+    center_strip = gray[:, left_bound:right_bound]
+
+    # Threshold to find dark pixels (spine is usually dark)
+    thresholded = cv.threshold(center_strip, 180, 255, cv.THRESH_BINARY_INV)[1]
+
+    # Sum vertically to find the column with most dark pixels
+    vertical_sum = np.sum(thresholded, axis=0)
+
+    # Check if there's a significant dark line (spine)
+    max_darkness = np.max(vertical_sum)
+    mean_darkness = np.mean(vertical_sum)
+
+    # Only split if there's a clear dark line (max is significantly above mean)
+    if max_darkness > mean_darkness * 1.5:
+        spine_offset = np.argmax(vertical_sum)
+        return left_bound + spine_offset
+
+    return None
+
+
+def redetect_region(image: Image.Image, bbox: list, layout_predictor) -> list:
+    """
+    Re-run layout detection on a cropped region and map coordinates back to original image.
+    If a spine (dark vertical line) is detected in the middle, splits the region first.
+
+    Args:
+        image: Original PIL Image
+        bbox: Bounding box [x1, y1, x2, y2] of the region to re-detect
+        layout_predictor: The layout predictor instance
+
+    Returns:
+        List of predictions with coordinates mapped back to original image
+    """
+    x1, y1, x2, y2 = [int(c) for c in bbox]
+
+    # Crop the region
+    cropped = image.crop((x1, y1, x2, y2))
+    cropped_array = np.array(cropped)
+
+    # Check if there's a spine to split on
+    spine_pos = find_spine_position(cropped_array)
+
+    if spine_pos is not None:
+        print(f"  Spine detected at x={spine_pos}, splitting region into two halves")
+        # Split into left and right halves
+        h, w = cropped_array.shape[:2]
+        left_half = cropped.crop((0, 0, spine_pos, h))
+        right_half = cropped.crop((spine_pos, 0, w, h))
+
+        # Process both halves
+        regions = [
+            (left_half, 0),           # left half, no x offset within crop
+            (right_half, spine_pos),  # right half, offset by spine position
+        ]
+    else:
+        # No spine found, process as single region
+        regions = [(cropped, 0)]
+
+    # Run layout detection and map coordinates back
+    mapped_predictions = []
+
+    # Define MappedPrediction class once outside the loop
+    class MappedPrediction:
+        pass
+
+    for region_image, region_x_offset in regions:
+        predictions = layout_predictor([region_image])[0].bboxes
+
+        for pred in predictions:
+            # Offset the bbox coordinates (region offset + original crop offset)
+            new_bbox = [
+                pred.bbox[0] + x1 + region_x_offset,
+                pred.bbox[1] + y1,
+                pred.bbox[2] + x1 + region_x_offset,
+                pred.bbox[3] + y1,
+            ]
+            # Offset the polygon coordinates
+            new_polygon = [[p[0] + x1 + region_x_offset, p[1] + y1] for p in pred.polygon]
+
+            mapped = MappedPrediction()
+            mapped.bbox = new_bbox
+            mapped.polygon = new_polygon
+            mapped.confidence = pred.confidence
+            mapped.label = pred.label
+            mapped.position = pred.position
+            mapped.top_k = pred.top_k if hasattr(pred, "top_k") else {}
+
+            mapped_predictions.append(mapped)
+
+    return mapped_predictions
 
 
 def is_section_header_candidate(pred) -> bool:
@@ -201,8 +363,21 @@ def process_images(debug: bool = False):
 
         # Get layout predictions
         layout_predictions = layout_predictor([image])
-        predictions = layout_predictions[0].bboxes
-        print(predictions)
+        predictions = list(layout_predictions[0].bboxes)
+
+        # Check for suspicious Table detections and re-detect those regions
+        image_width, image_height = image.size
+        final_predictions = []
+        for pred in predictions:
+            if is_sus_table(pred, image_width, image_height):
+                print(f"  Suspicious Table detected (conf={pred.confidence:.2f}), re-running detection on region...")
+                new_preds = redetect_region(image, pred.bbox, layout_predictor)
+                print(f"  Re-detection found {len(new_preds)} boxes")
+                final_predictions.extend(new_preds)
+            else:
+                final_predictions.append(pred)
+
+        predictions = final_predictions
 
         # Debug mode: show all bounding boxes and skip OCR
         if debug:
