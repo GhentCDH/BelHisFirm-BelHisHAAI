@@ -15,8 +15,9 @@ OUTPUT_DIR = Path("/home/bas/Documents/Visual Code Data/BelHisHAAI/test")
 
 
 
-# Regex pattern for valid section headers: starts with one or more digits followed by a dot
-SECTION_HEADER_PATTERN = re.compile(r"^\d+\.—")
+# Regex pattern for valid section headers: starts with one or more digits followed by a dot and dash
+# Accepts optional whitespace and various dash types (em dash, en dash, hyphen)
+SECTION_HEADER_PATTERN = re.compile(r"^\d+\.\s*[—–-]")
 
 
 def apply_otsu_threshold(image: Image.Image) -> Image.Image:
@@ -27,8 +28,10 @@ def apply_otsu_threshold(image: Image.Image) -> Image.Image:
 
 
 def is_valid_section_header(text: str) -> bool:
-    """Check if text starts with numbers followed by a dot and a dash (e.g., '1.-', '123.-')."""
-    return bool(SECTION_HEADER_PATTERN.match(text.strip().replace(" ", "").replace("\n", "")))
+    """Check if text starts with numbers followed by a dot and a dash, and contains at least one comma."""
+    cleaned = text.strip().replace("\n", "")
+    # Must match pattern AND contain at least one comma
+    return bool(SECTION_HEADER_PATTERN.match(cleaned)) and "," in text
 
 
 def is_sus_table(pred, image_width: int, image_height: int, area_threshold: float = 0.4, confidence_threshold: float = 0.85) -> bool:
@@ -148,26 +151,25 @@ def redetect_region(image: Image.Image, bbox: list, layout_predictor) -> list:
         left_half = cropped.crop((0, 0, spine_pos, h))
         right_half = cropped.crop((spine_pos, 0, w, h))
 
-        # Process both halves
-        regions = [
-            (left_half, 0),           # left half, no x offset within crop
-            (right_half, spine_pos),  # right half, offset by spine position
-        ]
+        # Batch process both halves together
+        region_images = [left_half, right_half]
+        region_x_offsets = [0, spine_pos]
     else:
         # No spine found, process as single region
-        regions = [(cropped, 0)]
+        region_images = [cropped]
+        region_x_offsets = [0]
 
-    # Run layout detection and map coordinates back
+    # Batch layout detection for all regions
+    batch_predictions = layout_predictor(region_images)
+
+    # Map coordinates back
     mapped_predictions = []
 
-    # Define MappedPrediction class once outside the loop
     class MappedPrediction:
         pass
 
-    for region_image, region_x_offset in regions:
-        predictions = layout_predictor([region_image])[0].bboxes
-
-        for pred in predictions:
+    for idx, (predictions, region_x_offset) in enumerate(zip(batch_predictions, region_x_offsets)):
+        for pred in predictions.bboxes:
             # Offset the bbox coordinates (region offset + original crop offset)
             new_bbox = [
                 pred.bbox[0] + x1 + region_x_offset,
