@@ -1,4 +1,6 @@
+import json
 import re
+from dataclasses import dataclass, field, asdict
 from pathlib import Path
 
 import cv2 as cv
@@ -371,5 +373,28 @@ def process_images():
     print("Done")
 
 
+
+
+class RecordProcessor:
+    def __init__(self):
+        pass
+    
+    def process_record(self, record_path: Path):
+        
+        from pathlib import Path
+        folder_path = Path(record_path)
+        images = sorted(folder_path.glob("*.*"))
+
+        for image_path in images:
+            print(f"Processing image: {image_path.name}")
+
+
+
+
+
+    pass  # Placeholder for additional processing logic
+
+
 if __name__ == "__main__":
-    process_images()
+    processor = RecordProcessor()
+    processor.process_record(Path("/home/bas/Documents/Visual Code Data/BelHisHAAI/1909 - JPEG2000"))
