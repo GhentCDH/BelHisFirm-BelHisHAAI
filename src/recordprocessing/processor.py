@@ -10,8 +10,8 @@ from surya.layout import LayoutPredictor
 from surya.recognition import RecognitionPredictor
 from surya.settings import settings
 
-INPUT_DIR = Path("/home/bas/Documents/Visual Code Data/BelHisHAAI/test")
-OUTPUT_DIR = Path("/home/bas/Documents/Visual Code Data/BelHisHAAI/test/processed")
+INPUT_DIR = Path("/home/bas/Documents/Visual Code Data/BelHisHAAI/1909 - JPEG2000")
+OUTPUT_DIR = Path("/home/bas/Documents/Visual Code Data/BelHisHAAI/test")
 
 
 
@@ -322,12 +322,18 @@ def process_images():
 
         # OCR each section header region
         section_headers = []
+        padding = 15  # Pixels of padding around the crop for better OCR
         for pred in section_header_bboxes:
             bbox = [int(c) for c in pred.bbox]
-            print(pred)
 
-            # Crop the section header region
-            cropped = image.crop(bbox)
+            # Crop the section header region with padding
+            padded_bbox = [
+                max(0, bbox[0] - padding),
+                max(0, bbox[1] - padding),
+                min(image.width, bbox[2] + padding),
+                min(image.height, bbox[3] + padding),
+            ]
+            cropped = image.crop(padded_bbox)
 
             # Run OCR on the cropped region
             ocr_results = recognition_predictor([cropped], det_predictor=detection_predictor)
