@@ -220,73 +220,6 @@ def is_section_header_candidate(pred) -> bool:
     return False
 
 
-def display_all_bboxes(
-    image: Image.Image,
-    bboxes: list,
-    output_path: str | None = None,
-) -> Image.Image:
-    """
-    Display all bounding boxes on the image (debug mode).
-
-    Args:
-        image: PIL Image to annotate
-        bboxes: List of bbox prediction objects with 'bbox' and 'label' attributes
-        output_path: Optional path to save the annotated image
-
-    Returns:
-        Annotated PIL Image
-    """
-    annotated = image.copy().convert("RGB")
-    draw = ImageDraw.Draw(annotated)
-
-    try:
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 16)
-    except (IOError, OSError):
-        font = ImageFont.load_default()
-
-    # Color mapping for different labels
-    colors = {
-        "SectionHeader": "darkred",
-        "Text": "blue",
-        "Picture": "green",
-        "Table": "orange",
-        "Caption": "purple",
-        "Footnote": "brown",
-        "Formula": "cyan",
-        "PageHeader": "magenta",
-        "PageFooter": "gray",
-    }
-
-    for pred in bboxes:
-        bbox = [int(c) for c in pred.bbox]
-        label = pred.label
-
-        # Check if this is a SectionHeader candidate (overridden from another label)
-        is_candidate = is_section_header_candidate(pred)
-        if is_candidate and label != "SectionHeader":
-            label = f"{label}→SectionHeader"
-            color = "darkred"
-        else:
-            color = colors.get(label, "black")
-
-        # Draw bounding box
-        draw.rectangle(bbox, outline=color, width=2)
-
-        # Draw label
-        label_y = bbox[1] - 20
-        if label_y < 0:
-            label_y = bbox[1] + 5
-
-        text_bbox = draw.textbbox((bbox[0], label_y), label, font=font)
-        draw.rectangle(text_bbox, fill=color)
-        draw.text((bbox[0], label_y), label, fill="white", font=font)
-
-    if output_path:
-        annotated.save(output_path)
-
-    return annotated
-
-
 def display_valid_section_headers(
     image: Image.Image,
     section_headers: list[dict],
@@ -337,7 +270,7 @@ def display_valid_section_headers(
     return annotated
 
 
-def process_images(debug: bool = False):
+def process_images():
     """Process images to detect and validate section headers.
 
     Args:
@@ -347,9 +280,8 @@ def process_images(debug: bool = False):
 
     # Initialize predictors
     layout_predictor = LayoutPredictor(FoundationPredictor(checkpoint=settings.LAYOUT_MODEL_CHECKPOINT))
-    if not debug:
-        detection_predictor = DetectionPredictor()
-        recognition_predictor = RecognitionPredictor(FoundationPredictor())
+    detection_predictor = DetectionPredictor()
+    recognition_predictor = RecognitionPredictor(FoundationPredictor())
 
     # Collect all image files
     files = list(INPUT_DIR.glob("*.jpg")) + list(INPUT_DIR.glob("*.jpeg")) + list(INPUT_DIR.glob("*.tif")) + list(INPUT_DIR.glob("*.jp2"))
@@ -378,14 +310,6 @@ def process_images(debug: bool = False):
                 final_predictions.append(pred)
 
         predictions = final_predictions
-
-        # Debug mode: show all bounding boxes and skip OCR
-        if debug:
-            print(f"  Found {len(predictions)} bounding boxes")
-            output_path = OUTPUT_DIR / f"{file_path.stem}.jpg"
-            display_all_bboxes(image, predictions, str(output_path))
-            print(f"  Saved: {output_path.name}")
-            continue
 
         # Filter for SectionHeaders (including candidates based on top_k)
         section_header_bboxes = [
@@ -440,5 +364,4 @@ def process_images(debug: bool = False):
 
 
 if __name__ == "__main__":
-    DEBUG = True # Set to True to skip OCR and show all bounding boxes
-    process_images(debug=DEBUG)
+    process_images()
