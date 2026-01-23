@@ -6,7 +6,7 @@ import os
 
 import cv2 as cv
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 from surya.detection import DetectionPredictor
 from surya.foundation import FoundationPredictor
 from surya.layout import LayoutPredictor
@@ -43,6 +43,8 @@ class RecordProcessor:
         self.padding = 50
         self.sus_table_confidence_threshold = 0.85
         self.sus_table_area_threshold = 0.4
+        self.spine_vertical_margin = 200
+        self.spine_margin = 300
 
         self.record = None
 
@@ -96,7 +98,7 @@ class RecordProcessor:
         SECTION_HEADER_PATTERN = re.compile(r"^\d+\.\s*[—–-]")
         return bool(SECTION_HEADER_PATTERN.match(cleaned)) and "," in text
     
-    def find_spine_position(self, image_array: np.ndarray, search_margin: int = 50) -> int | None:
+    def find_spine_position(self, image_array: np.ndarray) -> int | None:
         if len(image_array.shape) != 2:
             gray = cv.cvtColor(image_array, cv.COLOR_BGR2GRAY)
         else:
@@ -105,10 +107,14 @@ class RecordProcessor:
         h, w = gray.shape
         half_w = w // 2
 
+        top = min(self.spine_vertical_margin, h // 2)
+        bottom = max(h - self.spine_vertical_margin, h // 2)
+        cropped = gray[top:bottom, :]
+
         # Extract a vertical strip around the center
-        left_bound = max(0, half_w - search_margin)
-        right_bound = min(w, half_w + search_margin)
-        center_strip = gray[:, left_bound:right_bound]
+        left_bound = max(0, half_w - self.spine_margin)
+        right_bound = min(w, half_w + self.spine_margin)
+        center_strip = cropped[:, left_bound:right_bound]
 
         # Threshold to find dark pixels (spine is usually dark)
         thresholded = cv.threshold(center_strip, 180, 255, cv.THRESH_BINARY_INV)[1]
@@ -263,6 +269,39 @@ class RecordProcessor:
             return meta
     
 
+    def mask_image(self, image: Image.Image, header_bbox: list, meta: dict, direction: str) -> Image.Image:
+        """Mask irrelevant portions of the image based on header position and reading order.
+
+        direction: "above" masks content before the header (for starting record)
+                   "below" masks content after the header (for ending record)
+        """
+        masked = image.copy()
+        draw = ImageDraw.Draw(masked)
+        w, h = masked.size
+        header_y = header_bbox[1]
+        side = meta.get("side", "UNKNOWN")
+        halfline = meta.get("halfline")
+
+        if halfline is None or side in ("MIDDLE", "UNKNOWN"):
+            if direction == "above":
+                draw.rectangle([0, 0, w, header_y], fill="white")
+            else:
+                draw.rectangle([0, header_y, w, h], fill="white")
+        elif side == "LEFT":
+            if direction == "above":
+                draw.rectangle([0, 0, halfline, header_y], fill="white")
+            else:
+                draw.rectangle([0, header_y, halfline, h], fill="white")
+                draw.rectangle([halfline, 0, w, h], fill="white")
+        elif side == "RIGHT":
+            if direction == "above":
+                draw.rectangle([0, 0, halfline, h], fill="white")
+                draw.rectangle([halfline, 0, w, header_y], fill="white")
+            else:
+                draw.rectangle([halfline, header_y, w, h], fill="white")
+
+        return masked
+
     def generate_record(self):
         output_folder = self.output_folder
 
@@ -298,25 +337,33 @@ class RecordProcessor:
 
                 if headers_on_page:
                     for header in headers_on_page:
+                        header_meta = self.which_half_is_bbox_on(header["bbox"], image)
 
                         self.record.end_header_bbox = header["bbox"]
-                        self.record.end_header_bbox_meta = self.which_half_is_bbox_on(header["bbox"], image)
+                        self.record.end_header_bbox_meta = header_meta
                         self.record.end_header_bbox_page = idx
                         if idx != record_page_idx:
-                            self.record.images.append(image)
+                            masked_end = self.mask_image(image, header["bbox"], header_meta, "below")
+                            self.record.images.append(masked_end)
+                        else:
+                            # Same page as record start — apply "below" mask on top of existing "above" mask
+                            self.record.images[-1] = self.mask_image(
+                                self.record.images[-1], header["bbox"], header_meta, "below"
+                            )
 
                         self.generate_record()
-                        
+
                         text = header["text"]
                         logger.info(f"Record header: {text}")
                         parts = re.split(r'[-–—−]+', text, maxsplit=1)
                         title = parts[1].strip() if len(parts) > 1 else text.strip()
-                        self.create_new_record(image=image, record_id=id, record_title=title)
+                        masked_start = self.mask_image(image, header["bbox"], header_meta, "above")
+                        self.create_new_record(image=masked_start, record_id=id, record_title=title)
                         self.record.start_header_bbox = header["bbox"]
-                        self.record.start_header_bbox_meta = self.which_half_is_bbox_on(header["bbox"], image)
+                        self.record.start_header_bbox_meta = header_meta
                         self.record.start_header_bbox_page = idx
 
-                        record_page_idx = idx    
+                        record_page_idx = idx
                         id += 1
 
                 else:
