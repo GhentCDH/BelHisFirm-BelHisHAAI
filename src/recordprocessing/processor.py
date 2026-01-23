@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List
 import os
+import csv
 
 import cv2 as cv
 import numpy as np
@@ -20,6 +21,7 @@ logger = getLogger(__name__)
 class Record:
     record_id : int
     record_title : str
+    internal_record_number : str
     images : List[Image.Image]
     start_header_bbox : list[float]
     start_header_bbox_meta : dict
@@ -52,11 +54,12 @@ class RecordProcessor:
         self.detection_predictor = DetectionPredictor()
         self.recognition_predictor = RecognitionPredictor(FoundationPredictor())
 
-    def create_new_record(self, image, record_id: int, record_title: str = ""):
+    def create_new_record(self, image, record_id: int, record_title: str = "", internal_record_number: str = ""):
         self.record = Record(
             images=[image],
             record_id=record_id,
             record_title=record_title,
+            internal_record_number=internal_record_number,
             start_header_bbox=[],
             start_header_bbox_meta={},
             start_header_bbox_page=0,
@@ -302,6 +305,60 @@ class RecordProcessor:
 
         return masked
 
+    def generate_pdf_from_images(self, folder_path: Path):
+        """Convert all images in a folder to a single PDF file."""
+        image_files = sorted(folder_path.glob("page_*.jpg"))
+        if not image_files:
+            logger.warning(f"No images found in {folder_path} to create PDF")
+            return
+        
+        images = []
+        for img_path in image_files:
+            try:
+                img = Image.open(img_path)
+                # Convert to RGB if necessary (PDF requires RGB)
+                if img.mode != 'RGB':
+                    img = img.convert('RGB')
+                images.append(img)
+            except Exception as e:
+                logger.error(f"Failed to load image {img_path.name} for PDF: {e}")
+        
+        if images:
+            pdf_path = folder_path / f"{folder_path.name}.pdf"
+            images[0].save(pdf_path, save_all=True, append_images=images[1:])
+            logger.info(f"PDF created: {pdf_path}")
+
+    def update_records_csv(self, record_folder: Path):
+        """Update CSV file with current record information."""
+        csv_path = self.output_folder / "records_index.csv"
+        file_exists = csv_path.exists()
+        
+        # Prepare record data
+        record_data = {
+            'record_id': self.record.record_id,
+            'internal_record_number': self.record.internal_record_number,
+            'record_title': self.record.record_title,
+            'folder_name': record_folder.name,
+            'num_pages': len(self.record.images),
+            'start_page': self.record.start_header_bbox_page,
+            'end_page': self.record.end_header_bbox_page,
+            'start_bbox': str(self.record.start_header_bbox),
+            'end_bbox': str(self.record.end_header_bbox),
+        }
+        
+        # Write or append to CSV
+        with open(csv_path, 'a', newline='', encoding='utf-8') as f:
+            fieldnames = ['record_id', 'internal_record_number', 'record_title', 'folder_name', 'num_pages', 
+                         'start_page', 'end_page', 'start_bbox', 'end_bbox']
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            
+            if not file_exists:
+                writer.writeheader()
+            
+            writer.writerow(record_data)
+        
+        logger.info(f"CSV updated: {csv_path}")
+
     def generate_record(self):
         output_folder = self.output_folder
 
@@ -313,7 +370,12 @@ class RecordProcessor:
         for idx, image in enumerate(self.record.images):
             image_filename = record_folder / f"page_{idx+1:03d}.jpg"
             image.save(image_filename)
-
+        
+        # Generate PDF from saved images
+        self.generate_pdf_from_images(record_folder)
+        
+        # Update CSV index
+        self.update_records_csv(record_folder)
 
     def process_record(self, record_path: Path, output_folder: Path):
         self.output_folder = output_folder
@@ -329,7 +391,7 @@ class RecordProcessor:
                 logger.error(f"Failed to open image {image_path.name}: {e}")
                 continue
             if idx == 0:
-                self.create_new_record(image=image, record_id=id, record_title="TITLE_PAGES")
+                self.create_new_record(image=image, record_id=id, record_title="TITLE_PAGES", internal_record_number="")
                 record_page_idx = idx
                 id += 1
             else:
@@ -356,9 +418,10 @@ class RecordProcessor:
                         text = header["text"]
                         logger.info(f"Record header: {text}")
                         parts = re.split(r'[-–—−]+', text, maxsplit=1)
+                        internal_number = parts[0].strip() if len(parts) > 0 else ""
                         title = parts[1].strip() if len(parts) > 1 else text.strip()
                         masked_start = self.mask_image(image, header["bbox"], header_meta, "above")
-                        self.create_new_record(image=masked_start, record_id=id, record_title=title)
+                        self.create_new_record(image=masked_start, record_id=id, record_title=title, internal_record_number=internal_number)
                         self.record.start_header_bbox = header["bbox"]
                         self.record.start_header_bbox_meta = header_meta
                         self.record.start_header_bbox_page = idx
