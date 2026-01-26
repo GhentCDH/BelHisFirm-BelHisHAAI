@@ -1,9 +1,11 @@
+import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List
 import os
 import csv
+import io
 
 import cv2 as cv
 import numpy as np
@@ -13,6 +15,14 @@ from surya.foundation import FoundationPredictor
 from surya.layout import LayoutPredictor
 from surya.recognition import RecognitionPredictor
 from surya.settings import settings
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
+from PyPDF2 import PdfReader, PdfWriter
+
+try:
+    from .OCR import OCRProcessor
+except ImportError:
+    from OCR import OCRProcessor
 
 from logging import getLogger
 logger = getLogger(__name__)
@@ -53,6 +63,7 @@ class RecordProcessor:
         self.layout_predictor = LayoutPredictor(FoundationPredictor(checkpoint=settings.LAYOUT_MODEL_CHECKPOINT))
         self.detection_predictor = DetectionPredictor()
         self.recognition_predictor = RecognitionPredictor(FoundationPredictor())
+        self.ocr_processor = OCRProcessor()
 
     def create_new_record(self, image, record_id: int, record_title: str = "", internal_record_number: str = ""):
         self.record = Record(
@@ -305,28 +316,112 @@ class RecordProcessor:
 
         return masked
 
-    def generate_pdf_from_images(self, folder_path: Path):
-        """Convert all images in a folder to a single PDF file."""
-        image_files = sorted(folder_path.glob("page_*.jpg"))
+    def generate_pdf_from_images(self, folder_path: Path, ocr_data: list[list[dict]]):
+        """Convert all images in a folder to a searchable PDF with OCR text layer."""
+        # Match only page_XXX.jpg, not debug files like page_XXX_ocr_bboxes.jpg
+        image_files = sorted([f for f in folder_path.glob("page_*.jpg") if f.stem.startswith("page_") and f.stem[5:].isdigit()])
         if not image_files:
             logger.warning(f"No images found in {folder_path} to create PDF")
             return
-        
-        images = []
-        for img_path in image_files:
+
+        pdf_path = folder_path / f"{folder_path.name}.pdf"
+        pdf_writer = PdfWriter()
+
+        for page_idx, img_path in enumerate(image_files):
             try:
                 img = Image.open(img_path)
-                # Convert to RGB if necessary (PDF requires RGB)
                 if img.mode != 'RGB':
                     img = img.convert('RGB')
-                images.append(img)
+
+                img_width, img_height = img.size
+
+                # Create image-only PDF page
+                img_pdf_buffer = io.BytesIO()
+                img.save(img_pdf_buffer, format='PDF')
+                img_pdf_buffer.seek(0)
+                img_pdf_reader = PdfReader(img_pdf_buffer)
+                img_page = img_pdf_reader.pages[0]
+
+                # Create text layer PDF
+                text_pdf_buffer = io.BytesIO()
+                c = canvas.Canvas(text_pdf_buffer, pagesize=(img_width, img_height))
+
+                # Add invisible text at bbox positions, sorted by reading order
+                if page_idx < len(ocr_data):
+                    # Sort lines by reading order: left column top-to-bottom, then right column top-to-bottom
+                    page_data = ocr_data[page_idx]
+                    page_lines = page_data.get("lines", [])
+
+                    def reading_order_key(line):
+                        # Use saved column assignment from OCR phase
+                        column_name = line.get("column", "unknown")
+                        # Map column names to sort order: left=0 (includes spanning/titles), right=1
+                        # Spanning lines are grouped with left column to maintain column separation
+                        column_order = {"single": 0, "left": 0, "spanning": 0, "right": 1, "unknown": 0}
+                        column = column_order.get(column_name, 0)
+
+                        y1 = line["bbox"][1]
+                        # Sort by column first, then by y position (top to bottom)
+                        return (column, y1)
+
+                    sorted_lines = sorted(page_lines, key=reading_order_key)
+                    
+                    # Assign virtual Y positions based on reading order to enforce proper extraction
+                    # This ensures PDF readers extract text in the intended order
+                    virtual_y_start = 0
+                    virtual_y_increment = 10  # Small increment to maintain order
+
+                    for line_idx, line in enumerate(sorted_lines):
+                        x1, y1, x2, y2 = line["bbox"]
+                        text = line["text"]
+                        if text.strip():
+                            try:
+                                # Sanitize text - keep only ASCII and common extended chars
+                                text = text.encode('latin-1', errors='ignore').decode('latin-1')
+                                if not text.strip():
+                                    continue
+
+                                # Use virtual Y position based on reading order instead of actual bbox position
+                                # This forces PDF readers to extract text in the correct reading order
+                                virtual_y = virtual_y_start + (line_idx * virtual_y_increment)
+                                pdf_y = virtual_y
+                                bbox_width = x2 - x1
+
+                                # Use fixed font size of 20
+                                font_size = 20
+                                c.setFont("Helvetica", font_size)
+
+                                # Calculate text width and scale horizontally to fit bbox
+                                text_width = c.stringWidth(text, "Helvetica", font_size)
+                                if text_width > 0:
+                                    h_scale = bbox_width / text_width
+                                else:
+                                    h_scale = 1
+
+                                c.saveState()
+                                c.setFillAlpha(0)  # Invisible text
+                                c.translate(x1, pdf_y)
+                                c.scale(h_scale, 1)  # Scale horizontally to fit bbox
+                                c.drawString(0, 0, text)
+                                c.restoreState()
+                            except Exception as text_err:
+                                logger.warning(f"Failed to add text '{text[:50]}...' to PDF: {text_err}")
+
+                c.save()
+                text_pdf_buffer.seek(0)
+                text_pdf_reader = PdfReader(text_pdf_buffer)
+                text_page = text_pdf_reader.pages[0]
+
+                # Merge text layer under image
+                text_page.merge_page(img_page)
+                pdf_writer.add_page(text_page)
+
             except Exception as e:
-                logger.error(f"Failed to load image {img_path.name} for PDF: {e}")
-        
-        if images:
-            pdf_path = folder_path / f"{folder_path.name}.pdf"
-            images[0].save(pdf_path, save_all=True, append_images=images[1:])
-            logger.info(f"PDF created: {pdf_path}")
+                logger.error(f"Failed to process {img_path.name} for PDF: {e}")
+
+        with open(pdf_path, 'wb') as f:
+            pdf_writer.write(f)
+        logger.info(f"Searchable PDF created: {pdf_path}")
 
     def update_records_csv(self, record_folder: Path):
         """Update CSV file with current record information."""
@@ -363,17 +458,48 @@ class RecordProcessor:
         output_folder = self.output_folder
 
         os.makedirs(output_folder, exist_ok=True)
-        title = self.record.record_title.replace(' ', '_').replace('"', '').replace('/', '_')
+        # Normalize folder name - remove/replace problematic characters
+        title = self.record.record_title
+        title = title.encode('ascii', errors='ignore').decode('ascii')  # Remove non-ASCII
+        title = re.sub(r'[<>:"/\\|?*]', '', title)  # Remove invalid filename chars
+        title = re.sub(r'\s+', '_', title)  # Replace whitespace with underscore
+        title = re.sub(r'_+', '_', title)  # Collapse multiple underscores
+        title = title.strip('_')  # Remove leading/trailing underscores
+        title = title[:30] if len(title) > 30 else title  # Limit length
         folder_name = f"{int(self.record.record_id):03d}-{title}"
         record_folder = output_folder / folder_name
         os.makedirs(record_folder, exist_ok=True)
+
+        # Run OCR on all images and collect results
+        ocr_data = []
+        skip_ocr = self.record.record_title == "TITLE_PAGES"
+
         for idx, image in enumerate(self.record.images):
             image_filename = record_folder / f"page_{idx+1:03d}.jpg"
             image.save(image_filename)
-        
-        # Generate PDF from saved images
-        self.generate_pdf_from_images(record_folder)
-        
+
+            if skip_ocr:
+                logger.info(f"Skipping OCR for TITLE_PAGES: {image_filename.name}")
+                ocr_data.append({"lines": [], "spine_position": None})
+            else:
+                # Run OCR on this page
+                logger.info(f"Running OCR on page {idx + 1}/{len(self.record.images)}: {image_filename.name} (size: {image.size})")
+                page_ocr = self.ocr_processor.process_pil_image(image, debug_name=str(image_filename), save_debug_image=False)
+                ocr_data.append(page_ocr)
+
+        # Save OCR data as JSON
+        ocr_json_path = record_folder / "ocr_data.json"
+        with open(ocr_json_path, 'w', encoding='utf-8') as f:
+            json.dump({
+                "record_id": self.record.record_id,
+                "record_title": self.record.record_title,
+                "pages": ocr_data
+            }, f, ensure_ascii=False, indent=2)
+        logger.info(f"OCR data saved: {ocr_json_path}")
+
+        # Generate searchable PDF from saved images
+        self.generate_pdf_from_images(record_folder, ocr_data)
+
         # Update CSV index
         self.update_records_csv(record_folder)
 
