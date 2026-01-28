@@ -316,7 +316,7 @@ class RecordProcessor:
 
         return masked
 
-    def generate_pdf_from_images(self, folder_path: Path, ocr_data: list[list[dict]]):
+    def generate_pdf_from_images(self, folder_path: Path, ocr_data: list[dict]):
         """Convert all images in a folder to a searchable PDF with OCR text layer."""
         # Match only page_XXX.jpg, not debug files like page_XXX_ocr_bboxes.jpg
         image_files = sorted([f for f in folder_path.glob("page_*.jpg") if f.stem.startswith("page_") and f.stem[5:].isdigit()])
@@ -365,11 +365,6 @@ class RecordProcessor:
                         return (column, y1)
 
                     sorted_lines = sorted(page_lines, key=reading_order_key)
-                    
-                    # Assign virtual Y positions based on reading order to enforce proper extraction
-                    # This ensures PDF readers extract text in the intended order
-                    virtual_y_start = 0
-                    virtual_y_increment = 10  # Small increment to maintain order
 
                     for line_idx, line in enumerate(sorted_lines):
                         x1, y1, x2, y2 = line["bbox"]
@@ -381,14 +376,14 @@ class RecordProcessor:
                                 if not text.strip():
                                     continue
 
-                                # Use virtual Y position based on reading order instead of actual bbox position
-                                # This forces PDF readers to extract text in the correct reading order
-                                virtual_y = virtual_y_start + (line_idx * virtual_y_increment)
-                                pdf_y = virtual_y
+                                # Convert from image coordinates (Y=0 at top) to PDF coordinates (Y=0 at bottom)
+                                # Use y2 (bottom of bbox) as the baseline for text positioning
+                                pdf_y = img_height - y2
                                 bbox_width = x2 - x1
+                                bbox_height = y2 - y1
 
-                                # Use fixed font size of 20
-                                font_size = 20
+                                # Scale font size to match bbox height
+                                font_size = max(6, min(bbox_height * 0.85, 72))  # Clamp between 6 and 72
                                 c.setFont("Helvetica", font_size)
 
                                 # Calculate text width and scale horizontally to fit bbox
@@ -568,4 +563,4 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
     processor = RecordProcessor()
-    processor.process_record(Path("/home/bas/Documents/Visual Code Data/BelHisHAAI/1909 - Testing"), Path("/home/bas/Documents/Visual Code Data/BelHisHAAI/1909 - Testing - Sort"))
+    processor.process_record(Path("/home/bas/Documents/Visual Code Data/BelHisHAAI/1909 - JPEG2000"), Path("/mnt/UGent_Share/ghentcdh_belhisfirm/1909 - Akte - Test"))

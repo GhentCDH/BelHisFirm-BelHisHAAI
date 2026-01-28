@@ -13,7 +13,7 @@ class OCRProcessor:
         self.detection_predictor = DetectionPredictor()
         self.model = Qwen3VLForConditionalGeneration.from_pretrained(
             "Qwen/Qwen3-VL-8B-Instruct",
-            dtype=torch.bfloat16,
+            torch_dtype=torch.bfloat16,
             device_map="auto",
         )
         self.processor = AutoProcessor.from_pretrained("Qwen/Qwen3-VL-8B-Instruct")
@@ -133,38 +133,85 @@ class OCRProcessor:
         print(f"[DEBUG] Spine at {spine_pos}, left: {len(left_bboxes)} (max_x2={left_max_x2}), right: {len(right_bboxes)} (max_x2={right_max_x2}), spanning: {len(spanning_bboxes)}")
         return extended
 
-    def calculate_iou(self, bbox1, bbox2) -> float:
-        """Calculate Intersection over Union (IoU) between two bounding boxes."""
-        x1_1, y1_1, x2_1, y2_1 = bbox1.bbox
-        x1_2, y1_2, x2_2, y2_2 = bbox2.bbox
+    def calculate_vertical_overlap(self, bbox1, bbox2) -> float:
+        """Calculate vertical overlap ratio between two bboxes.
 
-        # Calculate intersection
-        x1_i = max(x1_1, x1_2)
-        y1_i = max(y1_1, y1_2)
-        x2_i = min(x2_1, x2_2)
-        y2_i = min(y2_1, y2_2)
+        Returns the ratio of vertical intersection to the smaller bbox's height.
+        This helps detect when two bboxes are on the same text line.
+        """
+        _, y1_1, _, y2_1 = bbox1.bbox
+        _, y1_2, _, y2_2 = bbox2.bbox
 
-        if x2_i < x1_i or y2_i < y1_i:
+        # Calculate vertical intersection
+        y_intersect_start = max(y1_1, y1_2)
+        y_intersect_end = min(y2_1, y2_2)
+
+        if y_intersect_end <= y_intersect_start:
             return 0.0
 
-        intersection = (x2_i - x1_i) * (y2_i - y1_i)
+        vertical_intersection = y_intersect_end - y_intersect_start
 
-        # Calculate union
-        area1 = (x2_1 - x1_1) * (y2_1 - y1_1)
-        area2 = (x2_2 - x1_2) * (y2_2 - y1_2)
-        union = area1 + area2 - intersection
+        # Use the smaller height as reference
+        height1 = y2_1 - y1_1
+        height2 = y2_2 - y1_2
+        min_height = min(height1, height2)
 
-        if union == 0:
+        if min_height == 0:
             return 0.0
 
-        return intersection / union
+        return vertical_intersection / min_height
 
-    def remove_overlapping_bboxes(self, bboxes: list, iou_threshold: float = 0.5) -> list:
-        """Remove bounding boxes that significantly overlap using IoU metric."""
+    def calculate_horizontal_overlap(self, bbox1, bbox2) -> float:
+        """Calculate horizontal overlap ratio between two bboxes.
+
+        Returns the ratio of horizontal intersection to the smaller bbox's width.
+        """
+        x1_1, _, x2_1, _ = bbox1.bbox
+        x1_2, _, x2_2, _ = bbox2.bbox
+
+        # Calculate horizontal intersection
+        x_intersect_start = max(x1_1, x1_2)
+        x_intersect_end = min(x2_1, x2_2)
+
+        if x_intersect_end <= x_intersect_start:
+            return 0.0
+
+        horizontal_intersection = x_intersect_end - x_intersect_start
+
+        # Use the smaller width as reference
+        width1 = x2_1 - x1_1
+        width2 = x2_2 - x1_2
+        min_width = min(width1, width2)
+
+        if min_width == 0:
+            return 0.0
+
+        return horizontal_intersection / min_width
+
+    def are_same_line(self, bbox1, bbox2, vertical_threshold: float = 0.7, horizontal_threshold: float = 0.3) -> bool:
+        """Check if two bboxes are detecting the same text line.
+
+        Two bboxes are considered the same line if:
+        1. They have significant vertical overlap (same row)
+        2. They have some horizontal overlap (overlapping text)
+        """
+        vertical_overlap = self.calculate_vertical_overlap(bbox1, bbox2)
+        horizontal_overlap = self.calculate_horizontal_overlap(bbox1, bbox2)
+
+        return vertical_overlap >= vertical_threshold and horizontal_overlap >= horizontal_threshold
+
+    def remove_overlapping_bboxes(self, bboxes: list, vertical_threshold: float = 0.7, horizontal_threshold: float = 0.3) -> list:
+        """Remove bounding boxes that detect the same text line.
+
+        Uses vertical and horizontal overlap to determine if two bboxes
+        are detecting the same line, which works better than IoU for text
+        lines that may have different widths after column extension.
+        """
         if not bboxes:
             return bboxes
 
         # Sort by area (largest first) and confidence (higher first)
+        # Keeping larger bboxes ensures we don't lose text
         sorted_bboxes = sorted(
             bboxes,
             key=lambda b: (
@@ -178,17 +225,16 @@ class OCRProcessor:
         for bbox in sorted_bboxes:
             should_keep = True
             for kept_bbox in kept:
-                iou = self.calculate_iou(bbox, kept_bbox)
-                if iou > iou_threshold:
+                if self.are_same_line(bbox, kept_bbox, vertical_threshold, horizontal_threshold):
                     should_keep = False
-                    print(f"[DEBUG] Removing bbox with IoU={iou:.2f} against kept bbox")
+                    print(f"[DEBUG] Removing duplicate line bbox (v_overlap={self.calculate_vertical_overlap(bbox, kept_bbox):.2f}, h_overlap={self.calculate_horizontal_overlap(bbox, kept_bbox):.2f})")
                     break
             if should_keep:
                 kept.append(bbox)
 
         removed_count = len(bboxes) - len(kept)
         if removed_count > 0:
-            print(f"[DEBUG] Removed {removed_count} overlapping bboxes (IoU threshold={iou_threshold})")
+            print(f"[DEBUG] Removed {removed_count} duplicate line bboxes")
 
         return kept
 
@@ -275,17 +321,20 @@ class OCRProcessor:
             x1, y1, x2, y2 = bbox.bbox
             column = getattr(bbox, 'column', 'unknown')
 
-            # Add padding
-            x1 = max(0, x1 - padding)
-            y1 = max(0, y1 - padding)
-            x2 = min(image.width, x2 + padding)
-            y2 = min(image.height, y2 + padding)
+            # Save original bbox coordinates (before padding)
+            orig_x1, orig_y1, orig_x2, orig_y2 = int(x1), int(y1), int(x2), int(y2)
 
-            cropped = image.crop((x1, y1, x2, y2))
+            # Add padding for cropping context (but don't save these coordinates)
+            crop_x1 = max(0, x1 - padding)
+            crop_y1 = max(0, y1 - padding)
+            crop_x2 = min(image.width, x2 + padding)
+            crop_y2 = min(image.height, y2 + padding)
+
+            cropped = image.crop((crop_x1, crop_y1, crop_x2, crop_y2))
             text = self.ocr_cropped_line(cropped)
 
             lines.append({
-                "bbox": [int(x1), int(y1), int(x2), int(y2)],
+                "bbox": [orig_x1, orig_y1, orig_x2, orig_y2],
                 "text": text,
                 "column": column,
             })
