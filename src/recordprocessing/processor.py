@@ -50,20 +50,24 @@ class MappedPrediction:
     top_k: dict
    
 class RecordProcessor:
-    
-    def __init__(self):
+
+    def __init__(self, skip_ocr: bool = False):
         self.padding = 50
         self.sus_table_confidence_threshold = 0.85
         self.sus_table_area_threshold = 0.4
         self.spine_vertical_margin = 200
         self.spine_margin = 300
+        self.skip_ocr = skip_ocr
 
         self.record = None
 
         self.layout_predictor = LayoutPredictor(FoundationPredictor(checkpoint=settings.LAYOUT_MODEL_CHECKPOINT))
         self.detection_predictor = DetectionPredictor()
         self.recognition_predictor = RecognitionPredictor(FoundationPredictor())
-        self.ocr_processor = OCRProcessor()
+        if not skip_ocr:
+            self.ocr_processor = OCRProcessor()
+        else:
+            self.ocr_processor = None
 
     def create_new_record(self, image, record_id: int, record_title: str = "", internal_record_number: str = ""):
         self.record = Record(
@@ -416,7 +420,14 @@ class RecordProcessor:
 
         with open(pdf_path, 'wb') as f:
             pdf_writer.write(f)
-        logger.info(f"Searchable PDF created: {pdf_path}")
+
+        # Check if OCR data was included
+        has_ocr_text = any(
+            page_data.get("lines", [])
+            for page_data in ocr_data if isinstance(page_data, dict)
+        )
+        pdf_type = "Searchable PDF" if has_ocr_text else "PDF (image-only)"
+        logger.info(f"{pdf_type} created: {pdf_path}")
 
     def update_records_csv(self, record_folder: Path):
         """Update CSV file with current record information."""
@@ -467,14 +478,17 @@ class RecordProcessor:
 
         # Run OCR on all images and collect results
         ocr_data = []
-        skip_ocr = self.record.record_title == "TITLE_PAGES"
+        skip_ocr_for_record = self.skip_ocr or self.record.record_title == "TITLE_PAGES"
 
         for idx, image in enumerate(self.record.images):
             image_filename = record_folder / f"page_{idx+1:03d}.jpg"
             image.save(image_filename)
 
-            if skip_ocr:
-                logger.info(f"Skipping OCR for TITLE_PAGES: {image_filename.name}")
+            if skip_ocr_for_record:
+                if self.skip_ocr:
+                    logger.info(f"Skipping OCR (--no-ocr): {image_filename.name}")
+                else:
+                    logger.info(f"Skipping OCR for TITLE_PAGES: {image_filename.name}")
                 ocr_data.append({"lines": [], "spine_position": None})
             else:
                 # Run OCR on this page
@@ -492,7 +506,11 @@ class RecordProcessor:
             }, f, ensure_ascii=False, indent=2)
         logger.info(f"OCR data saved: {ocr_json_path}")
 
-        # Generate searchable PDF from saved images
+        # Generate PDF from saved images (with or without OCR text layer)
+        if skip_ocr_for_record:
+            logger.info("Generating PDF without OCR text layer...")
+        else:
+            logger.info("Generating searchable PDF with OCR text layer...")
         self.generate_pdf_from_images(record_folder, ocr_data)
 
         # Update CSV index
@@ -559,8 +577,20 @@ class RecordProcessor:
             self.generate_record()
 
 if __name__ == "__main__":
+    import argparse
     import logging
     logging.basicConfig(level=logging.INFO)
 
-    processor = RecordProcessor()
-    processor.process_record(Path("/home/bas/Documents/Visual Code Data/BelHisHAAI/1909 - JPEG2000"), Path("/mnt/UGent_Share/ghentcdh_belhisfirm/1909 - Akte - Test"))
+    parser = argparse.ArgumentParser(description="Process historical records with OCR")
+    parser.add_argument("input_folder", type=Path, nargs="?",
+                        default=Path("/home/bas/Documents/Visual Code Data/BelHisHAAI/1909 - JPEG2000"),
+                        help="Path to folder containing input images")
+    parser.add_argument("output_folder", type=Path, nargs="?",
+                        default=Path("/mnt/UGent_Share/ghentcdh_belhisfirm/1909 - Akte - Test"),
+                        help="Path to output folder for processed records")
+    parser.add_argument("--no-ocr", action="store_true",
+                        help="Skip OCR processing (only extract and save images)")
+    args = parser.parse_args()
+
+    processor = RecordProcessor(skip_ocr=args.no_ocr)
+    processor.process_record(args.input_folder, args.output_folder)
