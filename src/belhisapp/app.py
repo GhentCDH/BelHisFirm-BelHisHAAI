@@ -11,7 +11,6 @@ class BelhisApp(App):
     CSS = AppConstants.CSS
 
     def compose(self) -> ComposeResult:
-
         yield Logo(AppConstants.LOGO)
         yield Logo(AppConstants.INFO)
         yield FooterWidget(["utils", "config", "quit"])

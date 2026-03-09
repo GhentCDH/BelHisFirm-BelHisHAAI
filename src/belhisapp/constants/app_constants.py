@@ -15,8 +15,13 @@ class AppConstants:
     """
 
     CSS = """
+        Screen {
+            align: center top; 
+        }
+    
         Logo {
             color: skyblue;
+            width: auto;
         }
 
         FooterWidget {
