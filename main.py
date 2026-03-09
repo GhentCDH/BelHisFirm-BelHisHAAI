@@ -28,17 +28,7 @@ INFO = """
 class Logo(Static):
     pass
 
-class Haai(Static):
-    frame = reactive(0)
 
-    def on_mount(self) -> None:
-        self.set_interval(0.5, self.next_frame)
-
-    def next_frame(self) -> None:
-        self.frame = (self.frame + 1) % len(SHARK_FRAMES)
-
-    def watch_frame(self, frame: int) -> None:
-        self.update(SHARK_FRAMES[str(frame + 1)])
 
 class FooterOption(Static):
 
@@ -102,10 +92,6 @@ class BelHisApp(App):
         color: skyblue;
     }
 
-    Haai {
-        color: cornflowerblue;
-    }
-
     FooterWidget {
         dock: bottom;
         height: 20%;
@@ -127,7 +113,6 @@ class BelHisApp(App):
 
     def compose(self) -> ComposeResult:
         yield Logo(LOGO)
-        yield Haai()
         yield Logo(INFO)
         yield FooterWidget(["utils", "config", "quit"])
 
