@@ -1,10 +1,10 @@
-from textual.containers import Vertical
+from textual.containers import Horizontal, Vertical
 from textual.reactive import reactive
 from textual.app import ComposeResult
 
 from src.belhisapp.widgets.footer_option import FooterOption
 
-class FooterWidget(Vertical):
+class FooterWidget(Horizontal):
     """Footer widget with navigable options."""
 
     selected_index = reactive(0)
@@ -32,10 +32,10 @@ class FooterWidget(Vertical):
         self._update_selection()
 
     def on_key(self, event) -> None:
-        if event.key == "up":
+        if event.key == "left":
             self.selected_index = (self.selected_index - 1) % len(self.options)
             event.stop()
-        elif event.key == "down":
+        elif event.key == "right":
             self.selected_index = (self.selected_index + 1) % len(self.options)
             event.stop()
         elif event.key == "enter":

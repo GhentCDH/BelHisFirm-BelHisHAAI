@@ -34,12 +34,14 @@ class AppConstants:
             padding: 1 2;
             border-top: heavy steelblue;
             background: black;
+            layout: horizontal;
         }
         
         FooterOption {
-            padding: 0 2;
-            width: 100%;
+            padding: 1 2;
+            width: auto;
             color: lightslategray;
+            text-align: center;
         }
         
         FooterOption:hover {
