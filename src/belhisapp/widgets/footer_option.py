@@ -1,7 +1,7 @@
-from textual.widgets import Button
+from textual.widgets import Button, Static
 from textual.message import Message
 
-class FooterOption(Button):
+class FooterOption(Static):
 
     class Selected(Message):
         """Message sent when an option is selected."""

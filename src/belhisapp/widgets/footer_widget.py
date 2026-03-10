@@ -14,8 +14,13 @@ class FooterWidget(Horizontal):
         self.options = options
 
     def compose(self) -> ComposeResult:
+        num_options = len(self.options)
         for i, option in enumerate(self.options):
-            yield FooterOption(option, id=f"footer-option-{i}")
+            btn = FooterOption(option)
+
+            # Decide button width automatically
+            btn.styles.width = int(100 / num_options)
+            yield btn
 
     def on_mount(self) -> None:
         self.can_focus = True
@@ -24,14 +29,19 @@ class FooterWidget(Horizontal):
     def _update_selection(self) -> None:
         for i, child in enumerate(self.query(FooterOption)):
             if i == self.selected_index:
-                child.add_class("selected")
+                child.add_class("hover")
             else:
-                child.remove_class("selected")
+                child.remove_class("hover")
 
     def watch_selected_index(self, value: int) -> None:
         self._update_selection()
 
     def on_key(self, event) -> None:
+
+        # Remove selected class from all buttons
+        for i, child in enumerate(self.query(FooterOption)):
+            child.remove_class("selected")
+
         if event.key == "left":
             self.selected_index = (self.selected_index - 1) % len(self.options)
             event.stop()
@@ -39,6 +49,12 @@ class FooterWidget(Horizontal):
             self.selected_index = (self.selected_index + 1) % len(self.options)
             event.stop()
         elif event.key == "enter":
+
+            # Add selected class to selected button
+            for i, child in enumerate(self.query(FooterOption)):
+                if i == self.selected_index:
+                    child.add_class("selected")
+
             option = self.options[self.selected_index]
             self.post_message(FooterOption.Selected(option))
             event.stop()
