@@ -5,17 +5,25 @@ import numpy as np
 import torch
 from PIL import Image, ImageDraw
 from surya.detection import DetectionPredictor
-from transformers import Qwen3VLForConditionalGeneration, AutoProcessor
+from transformers import Qwen3VLForConditionalGeneration, AutoProcessor, BitsAndBytesConfig
 
 
 class OCRProcessor:
     def __init__(self):
         self.detection_predictor = DetectionPredictor()
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_use_double_quant=True,
+        )
         self.model = Qwen3VLForConditionalGeneration.from_pretrained(
             "Qwen/Qwen3-VL-8B-Instruct",
-            torch_dtype=torch.bfloat16,
+            dtype="auto",
             device_map="auto",
+            quantization_config=bnb_config,
         )
+        self.model.eval()
         self.processor = AutoProcessor.from_pretrained("Qwen/Qwen3-VL-8B-Instruct")
 
         # Spine detection parameters
@@ -57,6 +65,61 @@ class OCRProcessor:
             spine_offset = np.argmax(vertical_sum)
             return left_bound + spine_offset
         return None
+
+    def is_bbox_in_excluded_region(self, text_bbox: list, excluded_regions: list, overlap_threshold: float = 0.5) -> bool:
+        """Check if a text bbox falls within an excluded region.
+        
+        Args:
+            text_bbox: [x1, y1, x2, y2] of the text line
+            excluded_regions: List of dicts with 'bbox' key
+            overlap_threshold: Minimum overlap ratio to exclude the text
+        
+        Returns:
+            True if the text bbox should be excluded
+        """
+        tx1, ty1, tx2, ty2 = text_bbox
+        text_area = (tx2 - tx1) * (ty2 - ty1)
+        
+        if text_area == 0:
+            return False
+        
+        for region in excluded_regions:
+            rx1, ry1, rx2, ry2 = region["bbox"]
+            
+            # Calculate intersection
+            ix1 = max(tx1, rx1)
+            iy1 = max(ty1, ry1)
+            ix2 = min(tx2, rx2)
+            iy2 = min(ty2, ry2)
+            
+            if ix1 < ix2 and iy1 < iy2:
+                intersection_area = (ix2 - ix1) * (iy2 - iy1)
+                overlap_ratio = intersection_area / text_area
+                
+                if overlap_ratio >= overlap_threshold:
+                    return True
+        
+        return False
+
+    def filter_excluded_bboxes(self, bboxes: list, excluded_regions: list) -> list:
+        """Filter out text bboxes that fall within excluded regions."""
+        if not excluded_regions:
+            return bboxes
+        
+        filtered = []
+        excluded_count = 0
+        
+        for bbox in bboxes:
+            bbox_coords = bbox.bbox if hasattr(bbox, 'bbox') else bbox
+            if not self.is_bbox_in_excluded_region(bbox_coords, excluded_regions):
+                filtered.append(bbox)
+            else:
+                excluded_count += 1
+        
+        if excluded_count > 0:
+            print(f"[DEBUG] Filtered out {excluded_count} text lines in excluded regions")
+        
+        return filtered
 
     def extend_bboxes_to_column_edges(self, bboxes: list, image: Image.Image) -> list:
         """Extend bounding boxes to the edge of their respective columns."""
@@ -264,7 +327,8 @@ class OCRProcessor:
         )
         inputs = inputs.to(self.model.device)
 
-        generated_ids = self.model.generate(**inputs, max_new_tokens=512)
+        with torch.inference_mode():
+            generated_ids = self.model.generate(**inputs, max_new_tokens=512)
         generated_ids_trimmed = [
             out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
         ]
@@ -278,8 +342,17 @@ class OCRProcessor:
         image = Image.open(image_path)
         return self.process_pil_image(image, padding)
 
-    def process_pil_image(self, image: Image.Image, padding: int = 5, debug_name: str = None, save_debug_image: bool = False) -> dict:
-        """Detect lines and OCR each one from a PIL Image. Returns dict with 'lines' and 'spine_position'."""
+    def process_pil_image(self, image: Image.Image, padding: int = 5, debug_name: str = None, save_debug_image: bool = False, excluded_regions: list = None) -> dict:
+        """Detect lines and OCR each one from a PIL Image. Returns dict with 'lines' and 'spine_position'.
+        
+        Args:
+            image: PIL Image to process
+            padding: Padding to add around text lines when cropping
+            debug_name: Optional name for debug output files
+            save_debug_image: Whether to save debug images
+            excluded_regions: List of regions to exclude from OCR (e.g., tables, figures).
+                              Each region is a dict with 'bbox' key containing [x1, y1, x2, y2].
+        """
         # Work with a copy to avoid any reference issues
         image = image.copy()
         if image.mode != "RGB":
@@ -295,6 +368,11 @@ class OCRProcessor:
         bboxes = self.detect_lines(image)
         print(f"Detected {len(bboxes)} text lines")
 
+        # Filter out text lines in excluded regions (tables, figures, etc.)
+        if excluded_regions:
+            bboxes = self.filter_excluded_bboxes(bboxes, excluded_regions)
+            print(f"After filtering excluded regions: {len(bboxes)} text lines")
+
         # Detect spine position and save it for later use
         spine_position = self.find_spine_position(image)
 
@@ -308,6 +386,14 @@ class OCRProcessor:
             # Save image with bounding boxes drawn
             bbox_image = image.copy()
             draw = ImageDraw.Draw(bbox_image)
+            # Draw excluded regions in blue
+            if excluded_regions:
+                for region in excluded_regions:
+                    rx1, ry1, rx2, ry2 = region["bbox"]
+                    draw.rectangle([rx1, ry1, rx2, ry2], outline="blue", width=4)
+                    label = region.get("label", "excluded")
+                    draw.text((rx1, ry1 - 20), f"SKIP: {label}", fill="blue")
+            # Draw text bboxes in red
             for i, bbox in enumerate(bboxes):
                 x1, y1, x2, y2 = bbox.bbox
                 draw.rectangle([x1, y1, x2, y2], outline="red", width=3)

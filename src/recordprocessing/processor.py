@@ -1,11 +1,14 @@
 import json
 import re
+import gc
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List
 import os
 import csv
 import io
+
+import torch
 
 import cv2 as cv
 import numpy as np
@@ -60,14 +63,28 @@ class RecordProcessor:
         self.skip_ocr = skip_ocr
 
         self.record = None
+        
+        # Labels to exclude from OCR output (add more labels here as needed)
+        self.ocr_excluded_labels = {"Table", "Picture", "Figure", "Form", "Handwriting", "Formula"}
 
         self.layout_predictor = LayoutPredictor(FoundationPredictor(checkpoint=settings.LAYOUT_MODEL_CHECKPOINT))
         self.detection_predictor = DetectionPredictor()
         self.recognition_predictor = RecognitionPredictor(FoundationPredictor())
+        
+        # Clear cache after model initialization
+        self._clear_gpu_memory()
+        
         if not skip_ocr:
             self.ocr_processor = OCRProcessor()
         else:
             self.ocr_processor = None
+
+    def _clear_gpu_memory(self):
+        """Clear GPU memory to prevent OOM errors."""
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
 
     def create_new_record(self, image, record_id: int, record_title: str = "", internal_record_number: str = ""):
         self.record = Record(
@@ -262,8 +279,31 @@ class RecordProcessor:
                     "bbox": bbox,
                     "text": text})
 
+        # Clear GPU memory after processing headers
+        self._clear_gpu_memory()
+        
         return headers_on_page if headers_on_page else None
     
+
+    def get_excluded_regions(self, image: Image.Image) -> list:
+        """Get regions to exclude from OCR based on layout detection.
+        
+        Returns list of dicts with 'bbox' and 'label' keys.
+        Configure excluded labels via self.ocr_excluded_labels.
+        """
+        layout_predictions = self.layout_predictor([image])
+        excluded_regions = []
+        
+        for pred in layout_predictions[0].bboxes:
+            if pred.label in self.ocr_excluded_labels:
+                excluded_regions.append({
+                    "bbox": [int(c) for c in pred.bbox],
+                    "label": pred.label,
+                    "confidence": pred.confidence
+                })
+                logger.debug(f"Excluding region: {pred.label} at {pred.bbox}")
+        
+        return excluded_regions
 
     def which_half_is_bbox_on(self, bbox: list, image):
         x1, y1, x2, y2 = bbox
@@ -322,8 +362,9 @@ class RecordProcessor:
 
     def generate_pdf_from_images(self, folder_path: Path, ocr_data: list[dict]):
         """Convert all images in a folder to a searchable PDF with OCR text layer."""
-        # Match only page_XXX.jpg, not debug files like page_XXX_ocr_bboxes.jpg
-        image_files = sorted([f for f in folder_path.glob("page_*.jpg") if f.stem.startswith("page_") and f.stem[5:].isdigit()])
+        # Match only page_XXX.jpg with exactly 3 digits (the format we use)
+        page_pattern = re.compile(r'^page_\d{3}$')
+        image_files = sorted([f for f in folder_path.glob("page_*.jpg") if page_pattern.match(f.stem)])
         if not image_files:
             logger.warning(f"No images found in {folder_path} to create PDF")
             return
@@ -474,6 +515,11 @@ class RecordProcessor:
         title = title[:30] if len(title) > 30 else title  # Limit length
         folder_name = f"{int(self.record.record_id):03d}-{title}"
         record_folder = output_folder / folder_name
+        
+        # Clear existing page files to prevent stale files from previous runs being included
+        if record_folder.exists():
+            for old_file in record_folder.glob("page_*.jpg"):
+                old_file.unlink()
         os.makedirs(record_folder, exist_ok=True)
 
         # Run OCR on all images and collect results
@@ -493,8 +539,22 @@ class RecordProcessor:
             else:
                 # Run OCR on this page
                 logger.info(f"Running OCR on page {idx + 1}/{len(self.record.images)}: {image_filename.name} (size: {image.size})")
-                page_ocr = self.ocr_processor.process_pil_image(image, debug_name=str(image_filename), save_debug_image=False)
+                
+                # Get excluded regions (tables, figures, etc.) from layout detection
+                excluded_regions = self.get_excluded_regions(image)
+                if excluded_regions:
+                    logger.info(f"Excluding {len(excluded_regions)} regions from OCR: {[r['label'] for r in excluded_regions]}")
+                
+                page_ocr = self.ocr_processor.process_pil_image(
+                    image, 
+                    excluded_regions=excluded_regions,
+                    debug_name=str(image_filename), 
+                    save_debug_image=False
+                )
                 ocr_data.append(page_ocr)
+                
+                # Clear GPU memory after each page to prevent OOM
+                self._clear_gpu_memory()
 
         # Save OCR data as JSON
         ocr_json_path = record_folder / "ocr_data.json"
@@ -575,6 +635,10 @@ class RecordProcessor:
 
         if self.record:
             self.generate_record()
+        
+        # Final cleanup
+        self._clear_gpu_memory()
+        logger.info("Processing complete, GPU memory cleared.")
 
 if __name__ == "__main__":
     import argparse
@@ -586,7 +650,7 @@ if __name__ == "__main__":
                         default=Path("/home/bas/Documents/Visual Code Data/BelHisHAAI/1909 - JPEG2000"),
                         help="Path to folder containing input images")
     parser.add_argument("output_folder", type=Path, nargs="?",
-                        default=Path("/mnt/UGent_Share/ghentcdh_belhisfirm/1909 - Akte - Test"),
+                        default=Path("/mnt/UGent_Share/ghentcdh_belhisfirm/1909 - Akte - Test - 2"),
                         help="Path to output folder for processed records")
     parser.add_argument("--no-ocr", action="store_true",
                         help="Skip OCR processing (only extract and save images)")
