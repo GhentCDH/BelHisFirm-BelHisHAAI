@@ -1,4 +1,4 @@
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal
 from textual.reactive import reactive
 from textual.app import ComposeResult
 

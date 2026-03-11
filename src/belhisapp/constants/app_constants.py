@@ -65,6 +65,22 @@ class AppConstants:
             width: auto;
             margin: 0;
         }
+        
+        WindowContainer {
+            width: 60%;
+            background: darkslateblue;
+            border: heavy steelblue;
+            border-top: thick lightsteelblue;
+            border-bottom: thick lightsteelblue;
+            padding: 1 2;
+            align: center top;
+            content-align: left top;
+            margin: 1 0;
+        }
+        
+        WindowContainer.focus {
+            border: heavy deepskyblue;        /* highlight when selected/focused */
+        }
 
         FooterWidget {
             dock: bottom;
