@@ -38,7 +38,7 @@ class FooterWidget(Horizontal):
 
     def on_key(self, event) -> None:
 
-        # Remove selected class from all buttons
+        # Remove selected CSS class from all buttons
         for i, child in enumerate(self.query(FooterOption)):
             child.remove_class("selected")
 

@@ -1,13 +1,8 @@
 from textual.app import App, ComposeResult
-from textual.widgets import Static
 from textual.containers import CenterMiddle
 
-from src.belhisapp.widgets import FooterOption
-from src.belhisapp.widgets import FooterWidget
-from src.belhisapp.widgets import HeaderWidget
-from src.belhisapp.widgets import HeaderItem
-from src.belhisapp.widgets.window import WindowContainer
-
+from src.belhisapp.widgets.window import DefaultWindow, WindowContainer
+from src.belhisapp.widgets import FooterOption, FooterWidget, HeaderItem, HeaderWidget
 from src.belhisapp.constants import AppConstants
 
 class BelhisApp(App):
@@ -17,7 +12,9 @@ class BelhisApp(App):
         logo = HeaderItem(AppConstants.LOGO)
         yield HeaderWidget([logo])
 
-        yield CenterMiddle(WindowContainer([Static(AppConstants.SHARK), Static(AppConstants.INFO)]))
+        window = DefaultWindow()
+
+        yield CenterMiddle(WindowContainer(window))
 
         yield FooterWidget(["utils", "config", "quit"])
 
