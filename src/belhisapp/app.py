@@ -12,8 +12,8 @@ class BelhisApp(App):
         logo = HeaderItem(AppConstants.LOGO)
         yield HeaderWidget([logo])
 
+        # Window shown before a menu option is selected
         window = DefaultWindow()
-
         yield CenterMiddle(WindowContainer(window))
 
         yield FooterWidget(["utils", "config", "quit"])

@@ -1,5 +1,6 @@
 from textual.containers import Container, Center
 from textual.app import ComposeResult
+from textual.widget import Widget
 
 from .window import Window
 

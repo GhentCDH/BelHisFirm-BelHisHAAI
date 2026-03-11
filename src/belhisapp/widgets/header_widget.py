@@ -4,7 +4,9 @@ from textual.containers import Horizontal, Vertical
 from .header_item import HeaderItem
 
 class HeaderWidget(Vertical):
-    """Header widget with static sub-widgets."""
+    """ Header widget with customizable header items. """
+
+    items: list[HeaderItem]
 
     def __init__(self, items: list[HeaderItem], **kwargs) -> None:
         super().__init__(**kwargs)
