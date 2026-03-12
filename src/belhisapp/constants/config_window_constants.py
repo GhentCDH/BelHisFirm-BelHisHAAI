@@ -16,5 +16,6 @@ class ConfigWindowConstants:
         "Suspicious Table Area Threshold",
         "Spine Vertical Margin",
         "Spine Margin",
-        "Skip OCR"
+        "Skip OCR",
+        "OCR Excluded Labels"
     ]

@@ -55,7 +55,8 @@ class AppConstants:
         }
         
         .FormHeader {
-           border: heavy green;
+           border-bottom: heavy thick lightsteelblue;
+           content-align: center middle;
         }
         
         .FormRow {
@@ -64,7 +65,6 @@ class AppConstants:
         }
         
         .FormLabel {
-            border: heavy red;
             width: 30;
             height: 4;
             text-align: right;
@@ -83,6 +83,26 @@ class AppConstants:
         
         .FormTextbox:focus {
             border: round deepskyblue;
+        }
+        
+        .FormButton {
+            width: 30;
+            height: auto;
+            background: steelblue;
+            color: white;
+            border: heavy lightsteelblue;
+            text-align: center;
+            content-align: center middle;
+            text-style: bold;
+        }
+        
+        .FormButton:hover {
+            background: deepskyblue;
+            color: white;
+        }
+        
+        .FormButton:focus {
+            border: heavy deepskyblue;
         }
             
         FooterWidget {
