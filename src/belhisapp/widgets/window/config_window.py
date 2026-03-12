@@ -1,18 +1,36 @@
-from textual.containers import Vertical
+from textual.containers import Vertical, Horizontal, Center
 from textual.widgets import Static
+from textual.widgets import Input
 
 from src.belhisapp.widgets.window.window import Window
 from src.belhisapp.constants import ConfigWindowConstants
 
 class ConfigWindow(Window):
 
+    _textboxes: list[Input]
+
     def __init__(self):
 
-        labels: list[Static] = ConfigWindow._get_labels(gap=2, css_class="")
+        rows: list[Horizontal] = []
 
-        labels_container: Vertical = Vertical(*labels)
+        # Textboxes used for JSON parsing
+        _textboxes: list[Input] = []
 
-        super().__init__([labels_container])
+        header: Static = Static(ConfigWindowConstants.CONFIG_LOGO, classes="FormHeader")
+
+        # Build a row for every config field with an input box and a label
+        for name in ConfigWindowConstants.CONFIG_FIELDS:
+            label = Static(f"{name}:", classes="FormLabel")
+            textbox = Input(placeholder=name, classes="FormTextbox")
+
+            # Save textbox separately so we can easily access its value later
+            _textboxes.append(textbox)
+
+            rows.append(Horizontal(label, textbox, classes="FormRow"))
+
+        form = Center(Vertical(*rows))
+
+        super().__init__([header, form])
 
         """
         self.padding = 50
@@ -27,26 +45,3 @@ class ConfigWindow(Window):
         # Labels to exclude from OCR output (add more labels here as needed)
         self.ocr_excluded_labels = {"Table", "Picture", "Figure", "Form", "Handwriting", "Formula"}
         """
-
-    @staticmethod
-    def _get_labels(gap: int = 0, css_class: str = "") -> list[Static]:
-        """ Builds a list of static widgets to act as labels in the config window
-
-            Args: gap (int): The number of lines inbetween each label
-            Args: css_class (str): The CSS class of all generated labels
-
-            Returns: A new list of static widgets
-        """
-
-        label_names: list[str] = ConfigWindowConstants.CONFIG_FIELDS
-        labels: list[Static] = []
-
-        # Build labels array
-        for i in range(len(label_names)):
-            labels.append(Static(label_names[i], classes=css_class))
-
-            # Add gap
-            for j in range(gap):
-                labels.append(Static(""))
-
-        return labels

@@ -26,6 +26,8 @@ class BelhisApp(App):
         yield FooterWidget(["utils", "config", "quit"])
 
     def on_mount(self) -> None:
+
+        # Start with default window
         self._window_container.set_window(self._default_window)
 
     def on_footer_option_selected(self, message: FooterOption.Selected) -> None:

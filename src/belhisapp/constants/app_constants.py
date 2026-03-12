@@ -41,13 +41,50 @@ class AppConstants:
             content-align: center middle;
             padding: 1 2;
             margin: 1 0;
+            
+            overflow_y: auto;
+
+            scrollbar-background: midnightblue;
+            scrollbar-color: steelblue;
+            scrollbar-color-hover: deepskyblue;
+            scrollbar-color-active: lightsteelblue;
         }
         
         #default-window-text{
             text-style: bold;
         }
         
+        .FormHeader {
+           border: heavy green;
+        }
         
+        .FormRow {
+            height: auto;
+            margin: 1 0;
+        }
+        
+        .FormLabel {
+            border: heavy red;
+            width: 30;
+            height: 4;
+            text-align: right;
+            content-align: right middle;
+            padding-right: 2;
+            color: lightsteelblue;
+            text-style: bold;
+        }
+        
+        .FormTextbox {
+            width: 1fr;
+            background: midnightblue;
+            border: round steelblue;
+            color: white;
+        }
+        
+        .FormTextbox:focus {
+            border: round deepskyblue;
+        }
+            
         FooterWidget {
             dock: bottom;
             height: 15%;

@@ -3,7 +3,7 @@ from src.belhisapp.constants import DefaultWindowConstants
 from src.belhisapp.widgets.window import Window
 
 class DefaultWindow(Window):
-    """ Window object containing widgets displayed at app creation"""
+    """ Window object containing widgets displayed at app creation """
 
     def __init__(self) -> None:
         shark: Static = Static(DefaultWindowConstants.SHARK)
