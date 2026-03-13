@@ -2,7 +2,7 @@ from textual.containers import Horizontal
 from textual.reactive import reactive
 from textual.app import ComposeResult
 
-from src.belhisapp.widgets.footer_option import FooterOption
+from src.belhisapp.widgets.common import FooterOption
 
 class FooterWidget(Horizontal):
     """ Footer widget with navigable options."""

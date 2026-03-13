@@ -2,7 +2,7 @@ from textual.app import App, ComposeResult
 from textual.containers import CenterMiddle
 
 from src.belhisapp.widgets.window import DefaultWindow, WindowContainer, ConfigWindow
-from src.belhisapp.widgets import FooterOption, FooterWidget, HeaderItem, HeaderWidget
+from src.belhisapp.widgets.common import FooterOption, FooterWidget, HeaderItem, HeaderWidget
 from src.belhisapp.constants import AppConstants
 
 class BelhisApp(App):
@@ -35,5 +35,6 @@ class BelhisApp(App):
             self.exit()
         elif message.option == "config":
             self._window_container.set_window(self._config_window)
+            self._config_window.load()
         elif message.option == "utils":
             self.notify(f"Selected: {message.option}")

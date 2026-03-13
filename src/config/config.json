@@ -1,0 +1,13 @@
+{
+    "padding": 10,
+    "suspicious_table_confidence_threshold": 0.75,
+    "suspicious_table_area_threshold": 1500.0,
+    "spine_vertical_margin": 5,
+    "spine_margin": 10,
+    "skip_ocr": false,
+    "ocr_excluded_labels": [
+        "header",
+        "footer",
+        "page_number"
+    ]
+}
