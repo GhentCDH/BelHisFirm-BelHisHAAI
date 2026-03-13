@@ -31,7 +31,7 @@ class ConfigParser:
                     for config_input in found_config_inputs:
                         config_input.set_value(str(data.get(config_field.key)))
 
-                return ConfigOperationResult(True, "")
+                return ConfigOperationResult(True, "Configuration loaded successfully.")
 
         except Exception as e:
             return ConfigOperationResult(False, f"An error occurred while reading the configuration file.\n{e}")
@@ -60,7 +60,7 @@ class ConfigParser:
             with open(filepath, "w") as file:
                 file.write(json.dumps(data))
 
-            return ConfigOperationResult(True, "")
+            return ConfigOperationResult(True, "Configuration saved successfully.")
 
         except Exception as e:
-            return ConfigOperationResult(False, f"An error occurred while saving the configuration file.\n{e}")
+            return ConfigOperationResult(False, f"An error occurred while saving the configuration.\n{e}")
