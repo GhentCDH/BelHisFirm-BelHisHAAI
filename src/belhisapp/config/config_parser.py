@@ -3,6 +3,7 @@ from typing import Any
 
 from .config_operation_result import ConfigOperationResult
 from src.belhisapp.config import ConfigField, ConfigInput
+from src.belhisapp.utils import Convert, ConvertResult
 
 class ConfigParser:
 
@@ -29,7 +30,14 @@ class ConfigParser:
 
                     # Match the config input given key to a JSON value and change the config input value
                     for config_input in found_config_inputs:
-                        config_input.set_value(str(data.get(config_field.key)))
+
+                        value = data.get(config_field.key)
+
+                        # Load lists differently
+                        if isinstance(value, list):
+                            config_input.set_value(", ".join(map(str, value)))
+                        else:
+                            config_input.set_value(str(value) if value is not None else "")
 
                 return ConfigOperationResult(True, "Configuration loaded successfully.")
 
@@ -53,9 +61,13 @@ class ConfigParser:
             # Build a dictionary mapping config input value to their corresponding keys
             for config_input in config_inputs:
                 # Convert the string present in the config input value (because it's a textbox) to the type that the config field specified
-                converted_config_input_value: Any = config_input.config_field.type(config_input.value)
+                convert_result: ConvertResult = Convert.convert_value(config_input.value, config_input.config_field.type)
 
-                data[config_input.config_field.key] = converted_config_input_value
+                # Check if the conversion was valid
+                if not convert_result.success:
+                    return ConfigOperationResult(False, f"An error occurred while saving the configuration.\n{convert_result.message}")
+
+                data[config_input.config_field.key] = convert_result.result
 
             with open(filepath, "w") as file:
                 file.write(json.dumps(data))

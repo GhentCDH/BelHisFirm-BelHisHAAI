@@ -1,6 +1,8 @@
 from dataclasses import dataclass
+from typing import Any
 
 @dataclass
-class ConfigOperationResult:
+class ConvertResult:
     success: bool
+    result: Any = None
     message: str = ""
