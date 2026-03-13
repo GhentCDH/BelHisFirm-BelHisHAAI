@@ -1,14 +1,14 @@
 import json
 from typing import Any
 
-from .load_config_result import LoadConfigResult
+from .config_operation_result import ConfigOperationResult
 from src.belhisapp.config import ConfigField, ConfigInput
 
 class ConfigParser:
 
     @staticmethod
     def load_config(filepath: str, config_inputs: list[ConfigInput],
-                    config_fields: list[ConfigField]) -> LoadConfigResult:
+                    config_fields: list[ConfigField]) -> ConfigOperationResult:
         """ Load the configuration file into a list of ConfigInputs.
 
         Args: filepath (str): Filepath of the JSON configuration file.
@@ -32,7 +32,7 @@ class ConfigParser:
                     for config_input in found_config_inputs:
                         config_input.value = str(data.get(config_field.key))
 
-                return LoadConfigResult(True, "")
+                return ConfigOperationResult(True, "")
 
         except Exception as e:
-            return LoadConfigResult(False, f"An error occurred while reading the configuration file.\n{e}")
+            return ConfigOperationResult(False, f"An error occurred while reading the configuration file.\n{e}")

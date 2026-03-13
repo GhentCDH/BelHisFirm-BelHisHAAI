@@ -1,7 +1,7 @@
 from textual.containers import Vertical, Horizontal, Center
 from textual.widgets import Static, Input
 
-from src.belhisapp.config import ConfigInput, LoadConfigResult, ConfigParser
+from src.belhisapp.config import ConfigInput, ConfigOperationResult, ConfigParser
 from src.belhisapp.widgets.window import Window
 from src.belhisapp.constants import ConfigConstants, AppConstants
 
@@ -39,7 +39,7 @@ class ConfigWindow(Window):
         super().__init__([header, form, gap, Center(button)])
 
     def load_json(self):
-        result: LoadConfigResult = ConfigParser.load_config(ConfigConstants.CONFIG_FILE_PATH, self._textboxes, ConfigConstants.CONFIG_FIELDS)
+        result: ConfigOperationResult = ConfigParser.load_config(ConfigConstants.CONFIG_FILE_PATH, self._textboxes, ConfigConstants.CONFIG_FIELDS)
 
         # Error checking for JSON parsing (TO DO: make the app show a message)
         if not result.success:

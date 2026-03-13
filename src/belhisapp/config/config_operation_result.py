@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
 @dataclass
-class LoadConfigResult:
+class ConfigOperationResult:
     success: bool
     error: str
