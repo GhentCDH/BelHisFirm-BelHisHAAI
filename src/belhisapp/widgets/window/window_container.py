@@ -1,6 +1,5 @@
-from textual.containers import Container, Center
-from textual.app import ComposeResult
-from textual.widget import Widget
+from textual.containers import Container
+from textual.widgets import Button
 
 from .window import Window
 
@@ -31,3 +30,9 @@ class WindowContainer(Container):
         # Mount all new children in the window
         for widget in self._window.widgets:
             self.mount(widget)
+
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
+
+        # If we have an active window object, manually call its handler for any events
+        if self._window and hasattr(self._window, "on_button_pressed"):
+            await self._window.on_button_pressed(event)

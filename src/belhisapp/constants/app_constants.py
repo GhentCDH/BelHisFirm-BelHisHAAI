@@ -149,6 +149,13 @@ class AppConstants:
         .FormButton:focus {
             border: heavy deepskyblue;
         }
+        
+        .FormError {
+            text-style: bold;
+            color: red;
+            content-align: center middle;
+            text-align: center;
+        }
             
         FooterWidget {
             dock: bottom;

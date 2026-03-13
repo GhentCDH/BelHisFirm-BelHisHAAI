@@ -1,5 +1,6 @@
+from numpy.f2py.auxfuncs import throw_error
 from textual.containers import Vertical, Horizontal, Center
-from textual.widgets import Static, Input
+from textual.widgets import Static, Button
 
 from src.belhisapp.config import ConfigInput, ConfigOperationResult, ConfigParser
 from src.belhisapp.widgets.window import Window
@@ -28,19 +29,29 @@ class ConfigWindow(Window):
         form = Center(Vertical(*rows))
 
         # Define save button
-        button: Static = Static("Save", classes="FormButton")
+        self.save_button: Button = Button("Save", classes="FormButton")
 
         # Define header
         header: Static = Static(AppConstants.CONFIG_LOGO, classes="FormHeader")
 
         # Gap between form and button
         gap = Static("")
+        gap2 = Static("")
 
-        super().__init__([header, form, gap, Center(button)])
+        self.error_log: Static =  Static("EROOOOOOR", classes="FormError")
+
+        super().__init__([header, form, gap, Center(self.save_button), gap2, self.error_log])
+
+    async def on_button_pressed(self, event: Button.Pressed):
+
+        if event.button == self.save_button:
+            result: ConfigOperationResult = ConfigParser.save_config(ConfigConstants.CONFIG_FILE_PATH, self._textboxes)
+
+            if not result.success:
+                self.error_log.update(result.error)
 
     def load_json(self):
         result: ConfigOperationResult = ConfigParser.load_config(ConfigConstants.CONFIG_FILE_PATH, self._textboxes, ConfigConstants.CONFIG_FIELDS)
 
-        # Error checking for JSON parsing (TO DO: make the app show a message)
         if not result.success:
-            pass
+            self.error_log.update(result.error)
