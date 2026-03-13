@@ -1,3 +1,2 @@
 from .app_constants import AppConstants
-from .default_window_constants import DefaultWindowConstants
-from .config_window_constants import ConfigWindowConstants
+from .config_constants import ConfigConstants

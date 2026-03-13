@@ -3,7 +3,7 @@ from textual.widgets import Static, Input
 
 from src.belhisapp.config import ConfigInput, LoadConfigResult, ConfigParser
 from src.belhisapp.widgets.window import Window
-from src.belhisapp.constants import ConfigWindowConstants
+from src.belhisapp.constants import ConfigConstants, AppConstants
 
 class ConfigWindow(Window):
 
@@ -15,7 +15,7 @@ class ConfigWindow(Window):
         rows: list[Horizontal] = []
 
         # Build a row for every config field with an input box and a label
-        for config_field in ConfigWindowConstants.CONFIG_FIELDS:
+        for config_field in ConfigConstants.CONFIG_FIELDS:
             label = Static(f"{config_field.name}:", classes="FormLabel")
             textbox = ConfigInput(config_field, classes="FormTextbox")
 
@@ -31,15 +31,15 @@ class ConfigWindow(Window):
         button: Static = Static("Save", classes="FormButton")
 
         # Define header
-        header: Static = Static(ConfigWindowConstants.CONFIG_LOGO, classes="FormHeader")
+        header: Static = Static(AppConstants.CONFIG_LOGO, classes="FormHeader")
 
         # Gap between form and button
         gap = Static("")
 
         super().__init__([header, form, gap, Center(button)])
 
-    def load(self):
-        result: LoadConfigResult = ConfigParser.load_config(ConfigWindowConstants.CONFIG_FILE_PATH, self._textboxes, ConfigWindowConstants.CONFIG_FIELDS)
+    def load_json(self):
+        result: LoadConfigResult = ConfigParser.load_config(ConfigConstants.CONFIG_FILE_PATH, self._textboxes, ConfigConstants.CONFIG_FIELDS)
 
         # Error checking for JSON parsing (TO DO: make the app show a message)
         if not result.success:

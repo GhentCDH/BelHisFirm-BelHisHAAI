@@ -35,6 +35,6 @@ class BelhisApp(App):
             self.exit()
         elif message.option == "config":
             self._window_container.set_window(self._config_window)
-            self._config_window.load()
+            self._config_window.load_json()
         elif message.option == "utils":
             self.notify(f"Selected: {message.option}")

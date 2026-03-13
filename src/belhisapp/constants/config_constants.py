@@ -3,6 +3,7 @@ from src.belhisapp.config import ConfigField
 class ConfigConstants:
     """ Constants used for loading, saving and displaying the configuration window."""
 
+    # List of fields that the config parser will look for, the key is what is used for matching, the name for label, and the type for saving back to JSON
     CONFIG_FIELDS: list[ConfigField] = [
         ConfigField("padding", "Padding", int),
         ConfigField("suspicious_table_confidence_threshold", "Suspicious Table Confidence Threshold", float),
