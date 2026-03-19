@@ -1,8 +1,7 @@
 from textual.widgets import Static
-
 from src.belhisapp.widgets.window import Window
 
-class RunWindow(Window):
+class UtilitiesWindow(Window):
 
     def __init__(self):
         super().__init__([Static("Test")])

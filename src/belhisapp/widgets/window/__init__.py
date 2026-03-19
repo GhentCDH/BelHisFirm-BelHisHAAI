@@ -2,4 +2,4 @@ from .window_container import WindowContainer
 from .window import Window
 from .default_window import DefaultWindow
 from .config_window import ConfigWindow
-from .run_window import RunWindow
+from .utilities_window import UtilitiesWindow

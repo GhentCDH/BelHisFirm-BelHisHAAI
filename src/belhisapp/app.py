@@ -1,7 +1,8 @@
 from textual.app import App, ComposeResult
 from textual.containers import CenterMiddle
 
-from src.belhisapp.widgets.window import DefaultWindow, WindowContainer, ConfigWindow, RunWindow
+from src.belhisapp.widgets.window import UtilitiesWindow
+from src.belhisapp.widgets.window import DefaultWindow, WindowContainer, ConfigWindow
 from src.belhisapp.widgets.common import FooterOption, FooterWidget, HeaderItem, HeaderWidget
 from src.belhisapp.constants import AppConstants
 
@@ -19,23 +20,21 @@ class BelhisApp(App):
 
         yield HeaderWidget([logo])
         yield CenterMiddle(self._window_container)
-        yield FooterWidget(["run", "utils", "config", "quit"])
+        yield FooterWidget(["utils", "config", "quit"])
 
     def on_mount(self) -> None:
 
-        # Start with default window
+        # Start by displaying default window
         default_window: DefaultWindow = DefaultWindow()
         self._window_container.set_window(default_window)
 
     def on_footer_option_selected(self, message: FooterOption.Selected) -> None:
         if message.option == "quit":
             self.exit()
-        elif message.option == "run":
-            run_window: RunWindow = RunWindow()
-            self._window_container.set_window(run_window)
         elif message.option == "config":
             config_window: ConfigWindow = ConfigWindow()
             self._window_container.set_window(config_window)
             config_window.load_json()
         elif message.option == "utils":
-            self.notify(f"Selected: {message.option}")
+            utilities_window: UtilitiesWindow = UtilitiesWindow()
+            self._window_container.set_window(utilities_window)

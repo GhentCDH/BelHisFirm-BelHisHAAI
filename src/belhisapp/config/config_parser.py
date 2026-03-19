@@ -3,7 +3,7 @@ from typing import Any
 
 from .config_operation_result import ConfigOperationResult
 from src.belhisapp.config import ConfigField, ConfigInput
-from src.belhisapp.utils import Convert, ConvertResult
+from src.belhisapp.type_helper import Convert, ConvertResult
 
 class ConfigParser:
 
