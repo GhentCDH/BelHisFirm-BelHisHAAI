@@ -1,1 +1,1 @@
-{"padding": 50, "suspicious_table_confidence_threshold": 40.0, "suspicious_table_area_threshold": 30.0, "spine_vertical_margin": 20, "spine_margin": 10, "skip_ocr": false, "ocr_excluded_labels": ["TEST", "TEST2", "", "TEST3"]}
+{"padding": 50, "suspicious_table_confidence_threshold": 40.0, "suspicious_table_area_threshold": 30.0, "spine_vertical_margin": 20, "spine_margin": 10, "skip_ocr": false, "ocr_excluded_labels": ["'TITLE'"]}

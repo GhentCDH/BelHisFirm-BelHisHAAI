@@ -34,7 +34,6 @@ class ConfigWindow(Window):
         # Define reset button
         self._reset_button: Button = Button("Reset", classes="FormButton")
 
-
         # Define header
         self._header: Static = Static(AppConstants.CONFIG_LOGO, classes="FormHeader")
 
