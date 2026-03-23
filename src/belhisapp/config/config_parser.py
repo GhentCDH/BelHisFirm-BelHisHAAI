@@ -26,7 +26,7 @@ class ConfigParser:
                 for config_field in config_fields:
 
                     # Find all config inputs that use this config field
-                    found_config_inputs: list[ConfigInput] = [config_input for config_input in config_inputs if config_input.config_field == config_field]
+                    found_config_inputs: list[ConfigInput] = [config_input for config_input in config_inputs if config_input._config_field == config_field]
 
                     # Match the config input given key to a JSON value and change the config input value
                     for config_input in found_config_inputs:
@@ -61,13 +61,13 @@ class ConfigParser:
             # Build a dictionary mapping config input value to their corresponding keys
             for config_input in config_inputs:
                 # Convert the string present in the config input value (because it's a textbox) to the type that the config field specified
-                convert_result: ConvertResult = Convert.convert_value(config_input.value, config_input.config_field.type)
+                convert_result: ConvertResult = Convert.convert_value(config_input.value, config_input._config_field.type)
 
                 # Check if the conversion was valid
                 if not convert_result.success:
                     return ConfigOperationResult(False, f"An error occurred while saving the configuration.\n{convert_result.message}")
 
-                data[config_input.config_field.key] = convert_result.result
+                data[config_input._config_field.key] = convert_result.result
 
             with open(filepath, "w") as file:
                 file.write(json.dumps(data))

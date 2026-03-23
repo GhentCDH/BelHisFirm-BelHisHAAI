@@ -106,7 +106,7 @@ class AppConstants:
         
         .FormRow {
             height: auto;
-            margin: 1 0;
+            margin: 0 0;
         }
         
         .FormLabel {

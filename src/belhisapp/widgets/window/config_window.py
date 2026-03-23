@@ -47,7 +47,7 @@ class ConfigWindow(Window):
         self._error_log: Static =  Static("", classes="FormError")
 
         # These are the widgets that will load within the window
-        widgets: list[Widget] = [self._header, self._form, gap, gap2, Center(self._save_button), gap3, Center(self._reset_button), gap4, self._error_log]
+        widgets: list[Widget] = [self._header, self._form, gap, gap2, Center(self._save_button), gap3, Center(self._reset_button), gap4]
 
         super().__init__(widgets)
 
