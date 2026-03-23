@@ -268,19 +268,22 @@ class RecordProcessor:
         Returns list of dicts with 'bbox' and 'label' keys.
         Configure excluded labels via self.ocr_excluded_labels.
         """
-        layout_predictions = self.layout_predictor([image])
 
         excluded_regions = []
-        
-        for prediction in layout_predictions[0].bboxes:
-            if prediction.label in self.ocr_excluded_labels:
-                excluded_regions.append({
-                    "bbox": [int(c) for c in prediction.bbox],
-                    "label": prediction.label,
-                    "confidence": prediction.confidence
-                })
-                logger.debug(f"Excluding region: {prediction.label} at {prediction.bbox}")
-        
+
+        results = self.yolo_model.predict(image)
+        for result in results:
+            mapped_predictions = ComponentProcessor.process_result(result)
+
+            for mapped_prediction in mapped_predictions:
+                if mapped_prediction.label in self.ocr_excluded_labels:
+                    excluded_regions.append({
+                        "bbox": [int(c) for c in mapped_prediction.bbox],
+                        "label": mapped_prediction.label,
+                        "confidence": mapped_prediction.confidence
+                    })
+                    logger.debug(f"Excluding region: {mapped_prediction.label} at {mapped_prediction.bbox}")
+
         return excluded_regions
 
     def which_half_is_bbox_on(self, bbox: list, image: Image.Image) -> dict:

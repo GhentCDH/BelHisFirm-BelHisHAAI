@@ -9,7 +9,7 @@ from src.recordprocessing.processor import MappedPrediction
 
 class ComponentProcessor:
     @staticmethod
-    def process_result(result: Results, x_offset: int, y_offset: int) -> list[MappedPrediction]:
+    def process_result(result: Results, x_offset: int = 0, y_offset: int = 0) -> list[MappedPrediction]:
         """ Processes a single prediction result into a list of MappedPredictions for that prediction.
 
         Args: result (list[Results]): The prediction result.
