@@ -647,10 +647,10 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Process historical records with OCR")
     parser.add_argument("input_folder", type=Path, nargs="?",
-                        default=Path("/home/bas/Documents/Visual Code Data/BelHisHAAI/1909 - JPEG2000"),
+                        default=Path("/Users/sander/PycharmProjects/BelHisFirm-BelHisHAAI/images"),
                         help="Path to folder containing input images")
     parser.add_argument("output_folder", type=Path, nargs="?",
-                        default=Path("/mnt/UGent_Share/ghentcdh_belhisfirm/1909 - Akte - Test - 2"),
+                        default=Path("/Users/sander/PycharmProjects/BelHisFirm-BelHisHAAI/output"),
                         help="Path to output folder for processed records")
     parser.add_argument("--no-ocr", action="store_true",
                         help="Skip OCR processing (only extract and save images)")
