@@ -21,6 +21,9 @@ from surya.settings import settings
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from PyPDF2 import PdfReader, PdfWriter
+from ultralytics import YOLO
+
+from utils import ComponentProcessor
 
 try:
     from .OCR import OCRProcessor
@@ -46,11 +49,8 @@ class Record:
 @dataclass
 class MappedPrediction:
     bbox: list
-    polygon: list
     confidence: float
     label: str
-    position: int
-    top_k: dict
    
 class RecordProcessor:
 
@@ -70,6 +70,9 @@ class RecordProcessor:
         self.layout_predictor = LayoutPredictor(FoundationPredictor(checkpoint=settings.LAYOUT_MODEL_CHECKPOINT))
         self.detection_predictor = DetectionPredictor()
         self.recognition_predictor = RecognitionPredictor(FoundationPredictor())
+
+        """ TEMPORARY HARDCODE """
+        self.yolo_model = YOLO("model/best.pt")
         
         # Clear cache after model initialization
         self._clear_gpu_memory()
@@ -183,29 +186,19 @@ class RecordProcessor:
         h, w = cropped_array.shape[:2]
         left_half = cropped.crop((0, 0, spine_pos, h))
         right_half = cropped.crop((spine_pos, 0, w, h))
-        
-        # Batch layout detection for split regions
-        batch_predictions = self.layout_predictor([left_half, right_half])
-        
-        # Map coordinates back
+
+        images = [left_half, right_half]
+        offsets = [0, spine_pos]
+
         mapped_predictions = []
-        
-        for predictions, region_x_offset in zip(batch_predictions, [0, spine_pos]):
-            for pred in predictions.bboxes:
-                mapped = MappedPrediction(
-                    bbox=[
-                        pred.bbox[0] + x1 + region_x_offset,
-                        pred.bbox[1] + y1,
-                        pred.bbox[2] + x1 + region_x_offset,
-                        pred.bbox[3] + y1,
-                    ],
-                    polygon=[[p[0] + x1 + region_x_offset, p[1] + y1] for p in pred.polygon],
-                    confidence=pred.confidence,
-                    label=pred.label,
-                    position=pred.position,
-                    top_k=pred.top_k if hasattr(pred, "top_k") else {},
-                )
-                mapped_predictions.append(mapped)
+
+        for image, region_x_offset in zip(images, offsets):
+            results = self.yolo_model.predict(image)
+
+            for result in results:
+                mapped_prediction = ComponentProcessor.process_result(result, x1 + region_x_offset, y1)
+
+                mapped_predictions.append(mapped_prediction)
         
         return mapped_predictions
 
@@ -292,6 +285,7 @@ class RecordProcessor:
         Configure excluded labels via self.ocr_excluded_labels.
         """
         layout_predictions = self.layout_predictor([image])
+
         excluded_regions = []
         
         for pred in layout_predictions[0].bboxes:

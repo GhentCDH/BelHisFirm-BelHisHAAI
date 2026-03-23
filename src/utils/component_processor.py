@@ -5,21 +5,22 @@ from numpy import ndarray
 from ultralytics.engine.results import Results
 
 from .page_component import PageComponent
+from src.recordprocessing.processor import MappedPrediction
 
 class ComponentProcessor:
     @staticmethod
-    def process_result(result: Results) -> list[PageComponent]:
-        """ Processes a single prediction result into a list of PageComponents for that prediction.
+    def process_result(result: Results, x_offset: int, y_offset: int) -> list[MappedPrediction]:
+        """ Processes a single prediction result into a list of MappedPredictions for that prediction.
 
-        Args: result (list[ProcessResult]): The prediction result.
+        Args: result (list[Results]): The prediction result.
 
-        Returns: A list new of PageComponent objects.
+        Returns: A list new of MappedPrediction objects.
         """
 
-        page_components: list[PageComponent] = []
+        mapped_predictions: list[MappedPrediction] = []
 
         boxes = result.boxes
-
+        class_names = result.names
         classes = boxes.cls.cpu().numpy().astype(int)
         probabilities = boxes.conf.cpu().numpy().astype(float)
 
@@ -28,16 +29,15 @@ class ComponentProcessor:
 
             x_min, y_min, x_max, y_max = xyxy.astype(int)
 
-            class_id = classes[idx]
+            bbox = [x_min + x_offset, y_min + y_offset, x_max + x_offset, y_max + y_offset]
             confidence = probabilities[idx]
+            class_id = classes[idx]
+            label = class_names[class_id]
 
-            name = ["paginanummer", "tabel_type_1", "tabel_type_2", "tabel_type_3", "tabel_type_4", "title"][class_id]
+            mapped_prediction: MappedPrediction = MappedPrediction(bbox, confidence, label)
+            mapped_predictions.append(mapped_prediction)
 
-            image_process_result: PageComponent = PageComponent(name, class_id, confidence, x_min, y_min, x_max, y_max)
-            page_components.append(image_process_result)
-
-
-        return page_components
+        return mapped_predictions
 
 
     @staticmethod
