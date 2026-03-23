@@ -19,7 +19,6 @@ from surya.layout import LayoutPredictor
 from surya.recognition import RecognitionPredictor
 from surya.settings import settings
 from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import letter
 from PyPDF2 import PdfReader, PdfWriter
 from ultralytics import YOLO
 
@@ -82,14 +81,14 @@ class RecordProcessor:
         else:
             self.ocr_processor = None
 
-    def _clear_gpu_memory(self):
+    def _clear_gpu_memory(self) -> None:
         """Clear GPU memory to prevent OOM errors."""
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
             torch.cuda.synchronize()
 
-    def create_new_record(self, image, record_id: int, record_title: str = "", internal_record_number: str = ""):
+    def create_new_record(self, image: Image.Image, record_id: int, record_title: str = "", internal_record_number: str = "") -> None:
         self.record = Record(
             images=[image],
             record_id=record_id,
@@ -103,21 +102,21 @@ class RecordProcessor:
             end_header_bbox_page=0,
         )
 
-    def collect_image_files(self, folder_path):
+    def collect_image_files(self, folder_path: Path) -> list:
         logger.info(f"Collecting image files from {folder_path}...")
         image_files = sorted(list(Path(folder_path).glob("*.jpg")) + list(Path(folder_path).glob("*.jpeg")) + list(Path(folder_path).glob("*.tif")) + list(Path(folder_path).glob("*.jp2")))
         return image_files 
     
-    # This function detectes if a Table prediction spans more than half of a page, which could mean that it overrides headers
+    # This function detects if a Table prediction spans more than half of a page, which could mean that it overrides headers
 
-    def is_sus_table(self, pred, image_width: int, image_height: int) -> bool:
-        if pred.label != "Table":
+    def is_sus_table(self, prediction: MappedPrediction, image_width: int, image_height: int) -> bool:
+        if prediction.label != "Table":
             return False
 
-        if pred.confidence >= self.sus_table_confidence_threshold:
+        if prediction.confidence >= self.sus_table_confidence_threshold:
             return False
 
-        bbox = pred.bbox
+        bbox = prediction.bbox
         bbox_width = bbox[2] - bbox[0]
         bbox_height = bbox[3] - bbox[1]
         bbox_area = bbox_width * bbox_height
@@ -128,10 +127,10 @@ class RecordProcessor:
             logger.info(f"Table detection check passed!")
             return False
         else:
-            logger.info(f"Sus table detected: conf={pred.confidence:.2f}, area_fraction={area_fraction:.2f}")
+            logger.info(f"Sus table detected: conf={prediction.confidence:.2f}, area_fraction={area_fraction:.2f}")
             return True
     
-    def is_valid_section_header(self, text: str):
+    def is_valid_section_header(self, text: str) -> bool:
         cleaned = text.strip().replace("\n", "")
         SECTION_HEADER_PATTERN = re.compile(r"^\d+\.\s*[—–-]")
         return bool(SECTION_HEADER_PATTERN.match(cleaned)) and "," in text
@@ -169,7 +168,7 @@ class RecordProcessor:
             spine_offset = np.argmax(vertical_sum)
             return left_bound + spine_offset
 
-    def redetect_region(self, image: Image.Image, bbox: list, original_prediction) -> list:
+    def redetect_region(self, image: Image.Image, bbox: list, original_prediction: MappedPrediction) -> list:
         x1, y1, x2, y2 = [int(c) for c in bbox]
         cropped = image.crop((x1, y1, x2, y2))
         cropped_array = np.array(cropped)
@@ -202,28 +201,13 @@ class RecordProcessor:
         
         return mapped_predictions
 
-    def is_record_header_candidate(self, pred) -> bool:
-        if pred.label == "SectionHeader":
+    def is_record_header_candidate(self, prediction: MappedPrediction) -> bool:
+        if prediction.label == "Title":
             return True
-
-        if not hasattr(pred, "top_k") or not pred.top_k:
+        else:
             return False
 
-        # Get sorted labels by confidence
-        sorted_labels = sorted(pred.top_k.items(), key=lambda x: x[1], reverse=True)
-        if len(sorted_labels) < 2:
-            return False
-
-        first_label, first_conf = sorted_labels[0]
-        second_label, _ = sorted_labels[1]
-
-        if first_conf < 0.90 and second_label == "SectionHeader":
-            logger.info(f"Overridden: {first_label} with confidence {first_conf}")
-            return True
-
-        return False
-
-    def detect_record_headers(self, image):
+    def detect_record_headers(self, image: Image.Image) -> list | None:
         layout_predictions = self.layout_predictor([image])
         predictions = list(layout_predictions[0].bboxes)
         if not predictions:
@@ -233,21 +217,21 @@ class RecordProcessor:
         image_width, image_height = image.size
         verified_predictions = []
 
-        for pred in predictions:
-            if self.is_sus_table(pred, image_width, image_height):
-                new_preds = self.redetect_region(image, pred.bbox, pred)
-                verified_predictions.extend(new_preds)
+        for prediction in predictions:
+            if self.is_sus_table(prediction, image_width, image_height):
+                new_predictions = self.redetect_region(image, prediction.bbox, prediction)
+                verified_predictions.extend(new_predictions)
             else:
-                verified_predictions.append(pred)
+                verified_predictions.append(prediction)
 
-        record_header_predictions = [pred for pred in verified_predictions if self.is_record_header_candidate(pred)]
+        record_header_predictions = [prediction for prediction in verified_predictions if self.is_record_header_candidate(prediction)]
         if not record_header_predictions:
             logger.info(f"No record headers found in layout predictions...")
             return None
 
         headers_on_page = []
-        for pred in record_header_predictions:
-            bbox = [int(c) for c in pred.bbox]
+        for prediction in record_header_predictions:
+            bbox = [int(c) for c in prediction.bbox]
             padded_bbox = [
                 max(0, bbox[0] - self.padding),
                 max(0, bbox[1] - self.padding),
@@ -288,18 +272,18 @@ class RecordProcessor:
 
         excluded_regions = []
         
-        for pred in layout_predictions[0].bboxes:
-            if pred.label in self.ocr_excluded_labels:
+        for prediction in layout_predictions[0].bboxes:
+            if prediction.label in self.ocr_excluded_labels:
                 excluded_regions.append({
-                    "bbox": [int(c) for c in pred.bbox],
-                    "label": pred.label,
-                    "confidence": pred.confidence
+                    "bbox": [int(c) for c in prediction.bbox],
+                    "label": prediction.label,
+                    "confidence": prediction.confidence
                 })
-                logger.debug(f"Excluding region: {pred.label} at {pred.bbox}")
+                logger.debug(f"Excluding region: {prediction.label} at {prediction.bbox}")
         
         return excluded_regions
 
-    def which_half_is_bbox_on(self, bbox: list, image):
+    def which_half_is_bbox_on(self, bbox: list, image: Image.Image) -> dict:
         x1, y1, x2, y2 = bbox
         bbox_center_x = (x1 + x2) / 2
         image_array = np.array(image)
@@ -354,7 +338,7 @@ class RecordProcessor:
 
         return masked
 
-    def generate_pdf_from_images(self, folder_path: Path, ocr_data: list[dict]):
+    def generate_pdf_from_images(self, folder_path: Path, ocr_data: list[dict]) -> None:
         """Convert all images in a folder to a searchable PDF with OCR text layer."""
         # Match only page_XXX.jpg with exactly 3 digits (the format we use)
         page_pattern = re.compile(r'^page_\d{3}$')
@@ -464,7 +448,7 @@ class RecordProcessor:
         pdf_type = "Searchable PDF" if has_ocr_text else "PDF (image-only)"
         logger.info(f"{pdf_type} created: {pdf_path}")
 
-    def update_records_csv(self, record_folder: Path):
+    def update_records_csv(self, record_folder: Path) -> None:
         """Update CSV file with current record information."""
         csv_path = self.output_folder / "records_index.csv"
         file_exists = csv_path.exists()
@@ -495,7 +479,7 @@ class RecordProcessor:
         
         logger.info(f"CSV updated: {csv_path}")
 
-    def generate_record(self):
+    def generate_record(self) -> None:
         output_folder = self.output_folder
 
         os.makedirs(output_folder, exist_ok=True)
@@ -570,7 +554,7 @@ class RecordProcessor:
         # Update CSV index
         self.update_records_csv(record_folder)
 
-    def process_record(self, record_path: Path, output_folder: Path):
+    def process_record(self, record_path: Path, output_folder: Path) -> None:
         self.output_folder = output_folder
         images = self.collect_image_files(record_path)
 

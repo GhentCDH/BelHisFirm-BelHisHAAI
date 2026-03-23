@@ -8,7 +8,9 @@ experiments/LabelStudio/output/*
 experiments/lightning_logs/*
 experiments/experiments/deformable-detr-finetuned/*
 
-
+images/*
+model/*
+output/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
