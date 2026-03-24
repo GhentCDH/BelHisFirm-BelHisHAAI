@@ -5,7 +5,7 @@ from ultralytics.engine.results import Results
 
 from src.recordprocessing.data import MappedPrediction
 
-class ComponentProcessor:
+class ResultProcessor:
     @staticmethod
     def process_result(result: Results, x_offset: int = 0, y_offset: int = 0) -> list[MappedPrediction]:
         """ Processes a single prediction result into a list of MappedPredictions for that prediction.
@@ -61,7 +61,6 @@ class ComponentProcessor:
             }
 
             data_results.append(data)
-
 
         with open(os.path.join(folder_path, "results.json"), "w") as f:
             json.dump(data_results, f, indent=4)

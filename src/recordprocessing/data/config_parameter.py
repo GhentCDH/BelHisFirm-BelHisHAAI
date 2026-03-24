@@ -8,3 +8,4 @@ class ConfigParameter:
     spine_vertical_margin: int
     spine_margin: int
     skip_ocr: bool
+    ocr_excluded_labels: set[str]

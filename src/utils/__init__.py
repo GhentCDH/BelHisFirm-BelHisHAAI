@@ -8,7 +8,7 @@ from .validate_image import (
     ImageType,
 )
 
-from .component_processor import ComponentProcessor
+from recordprocessing.pipeline.result_processor import ResultProcessor
 
 __all__ = [
     "convert_tiff_to_jp2",
@@ -17,5 +17,5 @@ __all__ = [
     "validate_images",
     "ValidationResult",
     "ImageType",
-    "ComponentProcessor"
+    "ResultProcessor"
 ]
