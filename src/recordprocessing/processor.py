@@ -7,6 +7,7 @@ import csv
 import io
 
 import torch
+import pytesseract as tesseract
 
 import cv2 as cv
 import numpy as np
@@ -220,8 +221,8 @@ class RecordProcessor:
             )
             cropped = image.crop(padded_bbox)
 
-            # text = self.ocr_processor.ocr_cropped_line(cropped)
-            text = "test"
+            text = tesseract.image_to_string(cropped, config="--psm 6")
+            print(f"\n||{text}||\n")
 
             valid = self.is_valid_section_header(text)
 
