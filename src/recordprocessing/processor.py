@@ -8,7 +8,7 @@ import torch
 import pytesseract as tesseract
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
+from PIL import Image, ImageEnhance, ImageFilter
 from ultralytics import YOLO
 
 from recordprocessing.data import ConfigParameter
@@ -240,63 +240,6 @@ class RecordProcessor:
 
         return excluded_regions
 
-    def which_half_is_bbox_on(self, bbox: list, image: Image.Image) -> dict:
-        x1, y1, x2, y2 = bbox
-        bbox_center_x = (x1 + x2) / 2
-        image_array = np.array(image)
-        halfline = ImageProcessor.find_spine_position(self.config, image_array=image_array)
-
-        if halfline is None:
-            logger.warning("No spine detected, cannot determine bbox side")
-            return {"side": "UNKNOWN", "halfline": None}
-
-        # Check if bbox spans across the halfline
-        if x1 < halfline < x2:
-            meta = {"side": "MIDDLE", "halfline": halfline}
-            return meta
-        elif bbox_center_x < halfline:
-            meta = {"side": "LEFT", "halfline": halfline}
-            return meta
-        else:
-            meta = {"side": "RIGHT", "halfline": halfline}
-            return meta
-    
-
-    def mask_image(self, image: Image.Image, header_bbox: list, meta: dict, direction: str) -> Image.Image:
-        """Mask irrelevant portions of the image based on header position and reading order.
-
-        direction: "above" masks content before the header (for starting record)
-                   "below" masks content after the header (for ending record)
-        """
-        masked = image.copy()
-        draw = ImageDraw.Draw(masked)
-        w, h = masked.size
-        header_y = header_bbox[1]
-        side = meta.get("side", "UNKNOWN")
-        halfline = meta.get("halfline")
-
-        if halfline is None or side in ("MIDDLE", "UNKNOWN"):
-            if direction == "above":
-                draw.rectangle([0, 0, w, header_y], fill="white")
-            else:
-                draw.rectangle([0, header_y, w, h], fill="white")
-        elif side == "LEFT":
-            if direction == "above":
-                draw.rectangle([0, 0, halfline, header_y], fill="white")
-            else:
-                draw.rectangle([0, header_y, halfline, h], fill="white")
-                draw.rectangle([halfline, 0, w, h], fill="white")
-        elif side == "RIGHT":
-            if direction == "above":
-                draw.rectangle([0, 0, halfline, h], fill="white")
-                draw.rectangle([halfline, 0, w, header_y], fill="white")
-            else:
-                draw.rectangle([halfline, header_y, w, h], fill="white")
-
-        return masked
-
-
-
     def generate_record(self) -> None:
         output_folder = self.output_folder
 
@@ -388,19 +331,17 @@ class RecordProcessor:
 
                 if headers_on_page:
                     for header in headers_on_page:
-                        header_meta = self.which_half_is_bbox_on(header["bbox"], image)
+                        header_meta = ImageProcessor.which_half_is_bbox_on(self.config, header["bbox"], image)
 
                         self.record.end_header_bbox = header["bbox"]
                         self.record.end_header_bbox_meta = header_meta
                         self.record.end_header_bbox_page = idx
                         if idx != record_page_idx:
-                            masked_end = self.mask_image(image, header["bbox"], header_meta, "below")
+                            masked_end = ImageProcessor.mask_image(image, header["bbox"], header_meta, "below")
                             self.record.images.append(masked_end)
                         else:
                             # Same page as record start — apply "below" mask on top of existing "above" mask
-                            self.record.images[-1] = self.mask_image(
-                                self.record.images[-1], header["bbox"], header_meta, "below"
-                            )
+                            self.record.images[-1] = ImageProcessor.mask_image(self.record.images[-1], header["bbox"], header_meta, "below")
 
                         self.generate_record()
 
@@ -409,7 +350,7 @@ class RecordProcessor:
                         parts = re.split(r'[-–—−]+', text, maxsplit=1)
                         internal_number = parts[0].strip() if len(parts) > 0 else ""
                         title = parts[1].strip() if len(parts) > 1 else text.strip()
-                        masked_start = self.mask_image(image, header["bbox"], header_meta, "above")
+                        masked_start = ImageProcessor.mask_image(image, header["bbox"], header_meta, "above")
                         self.create_new_record(image=masked_start, record_id=id, record_title=title, internal_record_number=internal_number)
                         self.record.start_header_bbox = header["bbox"]
                         self.record.start_header_bbox_meta = header_meta
