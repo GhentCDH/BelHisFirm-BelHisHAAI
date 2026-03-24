@@ -72,7 +72,7 @@ class VisionAnalyzer:
             mapped_predictions = ResultProcessor.process_result(result)
 
             for mapped_prediction in mapped_predictions:
-                if VisionAnalyzer.is_sus_table(self.config, mapped_prediction, image_width, image_height):
+                if self.is_sus_table(mapped_prediction, image_width, image_height):
                     new_predictions = self.redetect_region(image, mapped_prediction.bbox, mapped_prediction)
                     verified_predictions.extend(new_predictions)
                 else:

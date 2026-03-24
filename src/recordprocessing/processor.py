@@ -70,13 +70,11 @@ class RecordProcessor:
             end_header_bbox_page=0,
         )
 
-    def generate_record(self) -> None:
+    def generate_record(self, output_folder: Path) -> None:
         """ Saves record images, runs OCR if enabled, and exports results as JSON and PDF.
 
             Returns: None
         """
-
-        output_folder = self.output_folder
 
         os.makedirs(output_folder, exist_ok=True)
 
@@ -153,7 +151,6 @@ class RecordProcessor:
             Returns: None
         """
 
-        self.output_folder = output_folder
         images = IOManager.collect_image_files(record_path)
 
         id = 0
@@ -186,7 +183,7 @@ class RecordProcessor:
                             # Same page as record start — apply "below" mask on top of existing "above" mask
                             self.record.images[-1] = self.image_processor.mask_image(self.record.images[-1], header["bbox"], header_meta, "below")
 
-                        self.generate_record()
+                        self.generate_record(output_folder)
 
                         text = header["text"]
                         logger.info(f"Record header: {text}")
@@ -208,27 +205,8 @@ class RecordProcessor:
                         self.record.images.append(image)
 
         if self.record:
-            self.generate_record()
+            self.generate_record(output_folder)
         
         # Final cleanup
         GPUController.clear_gpu_memory()
         logger.info("Processing complete, GPU memory cleared.")
-
-if __name__ == "__main__":
-    import argparse
-    import logging
-    logging.basicConfig(level=logging.INFO)
-
-    parser = argparse.ArgumentParser(description="Process historical records with OCR")
-    parser.add_argument("input_folder", type=Path, nargs="?",
-                        default=Path("/Users/sander/PycharmProjects/BelHisFirm-BelHisHAAI/images"),
-                        help="Path to folder containing input images")
-    parser.add_argument("output_folder", type=Path, nargs="?",
-                        default=Path("/Users/sander/PycharmProjects/BelHisFirm-BelHisHAAI/output"),
-                        help="Path to output folder for processed records")
-    parser.add_argument("--no-ocr", action="store_true",
-                        help="Skip OCR processing (only extract and save images)")
-    args = parser.parse_args()
-
-    processor = RecordProcessor(skip_ocr=args.no_ocr)
-    processor.process_record(args.input_folder, args.output_folder)
