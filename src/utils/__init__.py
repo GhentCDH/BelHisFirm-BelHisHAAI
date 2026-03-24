@@ -9,7 +9,6 @@ from .validate_image import (
 )
 
 from .component_processor import ComponentProcessor
-from .page_component import PageComponent
 
 __all__ = [
     "convert_tiff_to_jp2",
@@ -18,6 +17,5 @@ __all__ = [
     "validate_images",
     "ValidationResult",
     "ImageType",
-    "PageComponent",
     "ComponentProcessor"
 ]

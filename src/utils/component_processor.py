@@ -1,11 +1,9 @@
 import json
 import os
 
-from numpy import ndarray
 from ultralytics.engine.results import Results
 
-from .page_component import PageComponent
-from src.recordprocessing.processor import MappedPrediction
+from src.recordprocessing.data import MappedPrediction
 
 class ComponentProcessor:
     @staticmethod
@@ -41,41 +39,11 @@ class ComponentProcessor:
 
 
     @staticmethod
-    def crop_image_to_page_component(image: ndarray, page_component: PageComponent, padding_x : int = 0, padding_y: int = 0) -> ndarray:
-        """ Crops an image to a bounding box of a PageComponent.
-
-        Args: image (np.ndarray): The image to be cropped.
-        Args: page_component (PageComponent): The PageComponent for the image to be cropped into.
-
-        Returns: cropped image (np.ndarray): The cropped image.
-        """
-
-        padding_y_min = page_component.min_y - padding_y
-        if padding_y_min < 0:
-            padding_y_min = 0
-
-        padding_y_max = page_component.max_y + padding_y
-        if padding_y_max > image.shape[0]:
-            padding_y_max = image.shape[0] - 1
-
-        padding_x_min = page_component.min_x - padding_x
-        if padding_x_min < 0:
-            padding_x_min = 0
-
-        padding_x_max = page_component.max_x + padding_x
-        if padding_x_max > image.shape[1]:
-            padding_x_max = image.shape[1] - 1
-
-        cropped = image[padding_y_min:padding_y_max, padding_x_min:padding_x_max]
-
-        return cropped
-
-    @staticmethod
-    def save_page_components(folder_path: str, page_components: list[PageComponent]) -> None:
-        """ Saves a list of PageComponent to JSON.
+    def save_predictions_to_json(folder_path: str, mapped_prediction: list[MappedPrediction]) -> None:
+        """ Saves a list of MappedPrediction to JSON.
 
         Args: folder_path (str): The directory in which the JSON will be saved.
-        Args results (list[ImageProcessResult]): The list of PageComponent to be saved.
+        Args results (list[MappedPrediction]): The list of MappedPrediction to be saved.
 
         Returns: None.
         """
@@ -85,15 +53,11 @@ class ComponentProcessor:
         data_results: list[dict] = []
 
         # For every page component create a dictionary and store it with the rest
-        for result in page_components:
+        for result in mapped_prediction:
             data = {
-                "name": result.name,
-                "class_id": int(result.class_id),
-                "probability": float(result.confidence),
-                "min_x": int(result.min_x),
-                "min_y": int(result.min_y),
-                "max_x": int(result.max_x),
-                "max_y": int(result.max_y),
+                "bbox": result.bbox,
+                "confidence": float(result.confidence),
+                "label": result.label,
             }
 
             data_results.append(data)

@@ -1,9 +1,7 @@
 import json
 import re
 import gc
-from dataclasses import dataclass
 from pathlib import Path
-from typing import List
 import os
 import csv
 import io
@@ -13,16 +11,13 @@ import torch
 import cv2 as cv
 import numpy as np
 from PIL import Image, ImageDraw
-from surya.detection import DetectionPredictor
-from surya.foundation import FoundationPredictor
-from surya.layout import LayoutPredictor
-from surya.recognition import RecognitionPredictor
-from surya.settings import settings
 from reportlab.pdfgen import canvas
 from PyPDF2 import PdfReader, PdfWriter
 from ultralytics import YOLO
 
-from utils import ComponentProcessor
+from src.utils import ComponentProcessor
+from src.recordprocessing.data import MappedPrediction
+from src.recordprocessing.data import Record
 
 try:
     from .OCR import OCRProcessor
@@ -32,25 +27,6 @@ except ImportError:
 from logging import getLogger
 logger = getLogger(__name__)
 
-@dataclass
-class Record:
-    record_id : int
-    record_title : str
-    internal_record_number : str
-    images : List[Image.Image]
-    start_header_bbox : list[float]
-    start_header_bbox_meta : dict
-    start_header_bbox_page : int
-    end_header_bbox : list[float]
-    end_header_bbox_meta : dict
-    end_header_bbox_page : int
-
-@dataclass
-class MappedPrediction:
-    bbox: list
-    confidence: float
-    label: str
-   
 class RecordProcessor:
 
     def __init__(self, skip_ocr: bool = False):
@@ -66,12 +42,8 @@ class RecordProcessor:
         # Labels to exclude from OCR output (add more labels here as needed)
         self.ocr_excluded_labels = {"Table", "Picture", "Figure", "Form", "Handwriting", "Formula"}
 
-        self.layout_predictor = LayoutPredictor(FoundationPredictor(checkpoint=settings.LAYOUT_MODEL_CHECKPOINT))
-        self.detection_predictor = DetectionPredictor()
-        self.recognition_predictor = RecognitionPredictor(FoundationPredictor())
-
         """ TEMPORARY HARDCODE """
-        self.yolo_model = YOLO("model/best.pt")
+        self.yolo_model = YOLO("/Users/sander/PycharmProjects/BelHisFirm-BelHisHAAI/model/best.pt")
         
         # Clear cache after model initialization
         self._clear_gpu_memory()
@@ -87,6 +59,10 @@ class RecordProcessor:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
             torch.cuda.synchronize()
+
+        # Clear metal performance shader cache on Mac devices
+        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            torch.mps.empty_cache()
 
     def create_new_record(self, image: Image.Image, record_id: int, record_title: str = "", internal_record_number: str = "") -> None:
         self.record = Record(
@@ -132,8 +108,8 @@ class RecordProcessor:
     
     def is_valid_section_header(self, text: str) -> bool:
         cleaned = text.strip().replace("\n", "")
-        SECTION_HEADER_PATTERN = re.compile(r"^\d+\.\s*[—–-]")
-        return bool(SECTION_HEADER_PATTERN.match(cleaned)) and "," in text
+        section_header_pattern = re.compile(r"^\d+\.\s*[—–-]")
+        return bool(section_header_pattern.match(cleaned)) and "," in text
     
     def find_spine_position(self, image_array: np.ndarray) -> int | None:
         if len(image_array.shape) != 2:
@@ -192,7 +168,7 @@ class RecordProcessor:
         mapped_predictions = []
 
         for image, region_x_offset in zip(images, offsets):
-            results = self.yolo_model.predict(image)
+            results = self.yolo_model.predict(image, stream=True)
 
             for result in results:
                 mapped_prediction = ComponentProcessor.process_result(result, x1 + region_x_offset, y1)
@@ -202,27 +178,31 @@ class RecordProcessor:
         return mapped_predictions
 
     def is_record_header_candidate(self, prediction: MappedPrediction) -> bool:
-        if prediction.label == "Title":
+        if prediction.label == "title":
             return True
         else:
             return False
 
     def detect_record_headers(self, image: Image.Image) -> list | None:
-        layout_predictions = self.layout_predictor([image])
-        predictions = list(layout_predictions[0].bboxes)
-        if not predictions:
+
+        results = self.yolo_model.predict(image, stream=True)
+
+        if not results:
             logger.info(f"No layout predictions..")
             return None
 
         image_width, image_height = image.size
         verified_predictions = []
 
-        for prediction in predictions:
-            if self.is_sus_table(prediction, image_width, image_height):
-                new_predictions = self.redetect_region(image, prediction.bbox, prediction)
-                verified_predictions.extend(new_predictions)
-            else:
-                verified_predictions.append(prediction)
+        for result in results:
+            mapped_predictions = ComponentProcessor.process_result(result)
+
+            for mapped_prediction in mapped_predictions:
+                if self.is_sus_table(mapped_prediction, image_width, image_height):
+                    new_predictions = self.redetect_region(image, mapped_prediction.bbox, mapped_prediction)
+                    verified_predictions.extend(new_predictions)
+                else:
+                    verified_predictions.append(mapped_prediction)
 
         record_header_predictions = [prediction for prediction in verified_predictions if self.is_record_header_candidate(prediction)]
         if not record_header_predictions:
@@ -232,19 +212,16 @@ class RecordProcessor:
         headers_on_page = []
         for prediction in record_header_predictions:
             bbox = [int(c) for c in prediction.bbox]
-            padded_bbox = [
+            padded_bbox = (
                 max(0, bbox[0] - self.padding),
                 max(0, bbox[1] - self.padding),
                 min(image.width, bbox[2] + self.padding),
                 min(image.height, bbox[3] + self.padding),
-            ]
+            )
             cropped = image.crop(padded_bbox)
 
-            ocr_results = self.recognition_predictor([cropped], det_predictor=self.detection_predictor)
-
-            text = ""
-            if ocr_results and ocr_results[0].text_lines:
-                text = " ".join(line.text for line in ocr_results[0].text_lines)
+            # text = self.ocr_processor.ocr_cropped_line(cropped)
+            text = "test"
 
             valid = self.is_valid_section_header(text)
 
@@ -264,14 +241,14 @@ class RecordProcessor:
 
     def get_excluded_regions(self, image: Image.Image) -> list:
         """Get regions to exclude from OCR based on layout detection.
-        
+
         Returns list of dicts with 'bbox' and 'label' keys.
         Configure excluded labels via self.ocr_excluded_labels.
         """
 
         excluded_regions = []
 
-        results = self.yolo_model.predict(image)
+        results = self.yolo_model.predict(image, stream=True)
         for result in results:
             mapped_predictions = ComponentProcessor.process_result(result)
 
@@ -637,5 +614,6 @@ if __name__ == "__main__":
                         help="Skip OCR processing (only extract and save images)")
     args = parser.parse_args()
 
-    processor = RecordProcessor(skip_ocr=args.no_ocr)
+    #processor = RecordProcessor(skip_ocr=args.no_ocr)
+    processor = RecordProcessor()
     processor.process_record(args.input_folder, args.output_folder)
