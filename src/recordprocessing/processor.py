@@ -24,6 +24,9 @@ class RecordProcessor:
 
     def __init__(self, skip_ocr: bool = False):
 
+        # File path to YOLO model
+        model_file_path: str = "/Users/sander/PycharmProjects/BelHisFirm-BelHisHAAI/model/best.pt"
+
         # Labels to exclude from OCR output (add more labels here as needed)
         ocr_excluded_labels = {"Table", "Picture", "Figure", "Form", "Handwriting", "Formula"}
 
@@ -34,6 +37,9 @@ class RecordProcessor:
         # Clear cache after model initialization
         GPUController.clear_gpu_memory()
 
+        self.image_processor = ImageProcessor(self.config)
+        self.vision_analyzer = VisionAnalyzer(self.config, model_file_path)
+
         self.ocr_processor = None
 
         if not skip_ocr:
@@ -41,6 +47,16 @@ class RecordProcessor:
 
 
     def create_new_record(self, image: Image.Image, record_id: int, record_title: str = "", internal_record_number: str = "") -> None:
+        """Creates a new Record object with initial metadata and images.
+
+            Args: image (Image.Image): The first image of the record.
+            Args: record_id (int): Unique identifier for the record.
+            Args: record_title (str): Title of the record.
+            Args: internal_record_number (str): Internal numbering for the record.
+
+            Returns: None
+        """
+
         self.record = Record(
             images=[image],
             record_id=record_id,
@@ -55,6 +71,11 @@ class RecordProcessor:
         )
 
     def generate_record(self) -> None:
+        """ Saves record images, runs OCR if enabled, and exports results as JSON and PDF.
+
+            Returns: None
+        """
+
         output_folder = self.output_folder
 
         os.makedirs(output_folder, exist_ok=True)
@@ -87,7 +108,7 @@ class RecordProcessor:
                 logger.info(f"Running OCR on page {idx + 1}/{len(self.record.images)}: {image_filename.name} (size: {image.size})")
                 
                 # Get excluded regions (tables, figures, etc.) from layout detection
-                excluded_regions = VisionAnalyzer.get_excluded_regions(self.config, image)
+                excluded_regions = self.vision_analyzer.get_excluded_regions(image)
                 if excluded_regions:
                     logger.info(f"Excluding {len(excluded_regions)} regions from OCR: {[r['label'] for r in excluded_regions]}")
                 
@@ -124,6 +145,14 @@ class RecordProcessor:
         IOManager.update_records_csv(self.record, record_folder, output_folder)
 
     def process_record(self, record_path: Path, output_folder: Path) -> None:
+        """ Processes all images in a folder into structured records with headers detection, OCR, and PDF export.
+
+            Args: record_path (Path): Path to the folder containing input images.
+            Args: output_folder (Path): Path to the folder where output files should be saved.
+
+            Returns: None
+        """
+
         self.output_folder = output_folder
         images = IOManager.collect_image_files(record_path)
 
@@ -141,21 +170,21 @@ class RecordProcessor:
                 record_page_idx = idx
                 id += 1
             else:
-                headers_on_page = VisionAnalyzer.detect_record_headers(self.config, image)
+                headers_on_page = self.vision_analyzer.detect_record_headers(image)
 
                 if headers_on_page:
                     for header in headers_on_page:
-                        header_meta = ImageProcessor.which_half_is_bbox_on(self.config, header["bbox"], image)
+                        header_meta = self.image_processor.which_half_is_bbox_on(header["bbox"], image)
 
                         self.record.end_header_bbox = header["bbox"]
                         self.record.end_header_bbox_meta = header_meta
                         self.record.end_header_bbox_page = idx
                         if idx != record_page_idx:
-                            masked_end = ImageProcessor.mask_image(image, header["bbox"], header_meta, "below")
+                            masked_end = self.image_processor.mask_image(image, header["bbox"], header_meta, "below")
                             self.record.images.append(masked_end)
                         else:
                             # Same page as record start — apply "below" mask on top of existing "above" mask
-                            self.record.images[-1] = ImageProcessor.mask_image(self.record.images[-1], header["bbox"], header_meta, "below")
+                            self.record.images[-1] = self.image_processor.mask_image(self.record.images[-1], header["bbox"], header_meta, "below")
 
                         self.generate_record()
 
@@ -164,7 +193,7 @@ class RecordProcessor:
                         parts = re.split(r'[-–—−]+', text, maxsplit=1)
                         internal_number = parts[0].strip() if len(parts) > 0 else ""
                         title = parts[1].strip() if len(parts) > 1 else text.strip()
-                        masked_start = ImageProcessor.mask_image(image, header["bbox"], header_meta, "above")
+                        masked_start = self.image_processor.mask_image(image, header["bbox"], header_meta, "above")
                         self.create_new_record(image=masked_start, record_id=id, record_title=title, internal_record_number=internal_number)
                         self.record.start_header_bbox = header["bbox"]
                         self.record.start_header_bbox_meta = header_meta

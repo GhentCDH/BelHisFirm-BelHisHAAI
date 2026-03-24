@@ -17,10 +17,13 @@ logger = logging.getLogger(__name__)
 
 class VisionAnalyzer:
 
-    yolo_model = YOLO("/Users/sander/PycharmProjects/BelHisFirm-BelHisHAAI/model/best.pt")
+    def __init__(self, config: ConfigParameter, yolo_model_file_path: str):
+        self.yolo_model = YOLO(yolo_model_file_path)
+        self.image_processor = ImageProcessor(config)
+        self.config = config
 
-    @staticmethod
-    def get_excluded_regions(config: ConfigParameter, image: Image.Image) -> list:
+
+    def get_excluded_regions(self, image: Image.Image) -> list:
         """ Get regions to exclude from OCR based on layout detection.
 
             Args: config: (ConfigParameter): Configuration object.
@@ -32,12 +35,12 @@ class VisionAnalyzer:
 
         excluded_regions = []
 
-        results = VisionAnalyzer.yolo_model.predict(image, stream=True)
+        results = self.yolo_model.predict(image, stream=True)
         for result in results:
             mapped_predictions = ResultProcessor.process_result(result)
 
             for mapped_prediction in mapped_predictions:
-                if mapped_prediction.label in config.ocr_excluded_labels:
+                if mapped_prediction.label in self.config.ocr_excluded_labels:
                     excluded_regions.append({
                         "bbox": [int(c) for c in mapped_prediction.bbox],
                         "label": mapped_prediction.label,
@@ -47,8 +50,7 @@ class VisionAnalyzer:
 
         return excluded_regions
 
-    @staticmethod
-    def detect_record_headers(config: ConfigParameter, image: Image.Image) -> list | None:
+    def detect_record_headers(self, image: Image.Image) -> list | None:
         """ Uses YOLO model to detect record headers in a given image.
 
         Args: config: (ConfigParameter): Configuration object.
@@ -57,7 +59,7 @@ class VisionAnalyzer:
         Returns: list of dictionaries for each header with their bounding box and text.
         """
 
-        results = VisionAnalyzer.yolo_model.predict(image, stream=True)
+        results = self.yolo_model.predict(image, stream=True)
 
         if not results:
             logger.info(f"No layout predictions..")
@@ -70,9 +72,8 @@ class VisionAnalyzer:
             mapped_predictions = ResultProcessor.process_result(result)
 
             for mapped_prediction in mapped_predictions:
-                if VisionAnalyzer.is_sus_table(config, mapped_prediction, image_width, image_height):
-                    new_predictions = VisionAnalyzer.redetect_region(config, image, mapped_prediction.bbox,
-                                                                     mapped_prediction)
+                if VisionAnalyzer.is_sus_table(self.config, mapped_prediction, image_width, image_height):
+                    new_predictions = self.redetect_region(image, mapped_prediction.bbox, mapped_prediction)
                     verified_predictions.extend(new_predictions)
                 else:
                     verified_predictions.append(mapped_prediction)
@@ -86,10 +87,10 @@ class VisionAnalyzer:
         for prediction in record_header_predictions:
             bbox = [int(c) for c in prediction.bbox]
             padded_bbox = (
-                max(0, bbox[0] - config.padding),
-                max(0, bbox[1] - config.padding),
-                min(image.width, bbox[2] + config.padding),
-                min(image.height, bbox[3] + config.padding),
+                max(0, bbox[0] - self.config.padding),
+                max(0, bbox[1] - self.config.padding),
+                min(image.width, bbox[2] + self.config.padding),
+                min(image.height, bbox[3] + self.config.padding),
             )
 
             cropped = image.crop(padded_bbox)
@@ -123,8 +124,7 @@ class VisionAnalyzer:
 
         return headers_on_page if headers_on_page else None
 
-    @staticmethod
-    def redetect_region(config: ConfigParameter, image: Image.Image, bbox: list, original_prediction: MappedPrediction) -> list:
+    def redetect_region(self, image: Image.Image, bbox: list, original_prediction: MappedPrediction) -> list:
         """ Re-analyzes a region by splitting along the spine if found, running detection on each half.
 
         Args: config: (ConfigParameter): Configuration object.
@@ -139,7 +139,7 @@ class VisionAnalyzer:
         cropped = image.crop((x1, y1, x2, y2))
         cropped_array = np.array(cropped)
 
-        spine_pos = ImageProcessor.find_spine_position(config, cropped_array)
+        spine_pos = self.image_processor.find_spine_position(cropped_array)
 
         if spine_pos is None:
             # No spine found - keep original prediction
@@ -158,7 +158,7 @@ class VisionAnalyzer:
         mapped_predictions = []
 
         for image, region_x_offset in zip(images, offsets):
-            results = VisionAnalyzer.yolo_model.predict(image, stream=True)
+            results = self.yolo_model.predict(image, stream=True)
 
             for result in results:
                 mapped_prediction = ResultProcessor.process_result(result, x1 + region_x_offset, y1)
@@ -167,8 +167,7 @@ class VisionAnalyzer:
 
         return mapped_predictions
 
-    @staticmethod
-    def is_sus_table(config: ConfigParameter, prediction: MappedPrediction, image_width: int, image_height: int) -> bool:
+    def is_sus_table(self, prediction: MappedPrediction, image_width: int, image_height: int) -> bool:
         """ Detects if a prediction spans more than half a page, this could mean that it overrides headers.
 
         Args: config: (ConfigParameter): Configuration object.
@@ -183,7 +182,7 @@ class VisionAnalyzer:
         if prediction.label != "Table":
             return False
 
-        if prediction.confidence >= config.sus_table_confidence_threshold:
+        if prediction.confidence >= self.config.sus_table_confidence_threshold:
             return False
 
         bbox = prediction.bbox
@@ -193,7 +192,7 @@ class VisionAnalyzer:
         image_area = image_width * image_height
         area_fraction = bbox_area / image_area
 
-        if area_fraction <= config.sus_table_area_threshold:
+        if area_fraction <= self.config.sus_table_area_threshold:
             logger.info(f"Table detection check passed!")
             return False
         else:
