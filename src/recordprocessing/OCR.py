@@ -18,13 +18,13 @@ class OCRProcessor:
             bnb_4bit_use_double_quant=True,
         )
         self.model = Qwen3VLForConditionalGeneration.from_pretrained(
-            "Qwen/Qwen3-VL-8B-Instruct",
+            "Qwen/Qwen3-VL-4B-Instruct", # 8B
             dtype="auto",
             device_map="auto",
             quantization_config=bnb_config,
         )
         self.model.eval()
-        self.processor = AutoProcessor.from_pretrained("Qwen/Qwen3-VL-8B-Instruct")
+        self.processor = AutoProcessor.from_pretrained("Qwen/Qwen3-VL-4B-Instruct") # 8B
 
         # Spine detection parameters
         self.spine_vertical_margin = 200

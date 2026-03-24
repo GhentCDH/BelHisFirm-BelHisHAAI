@@ -11,7 +11,7 @@ import pytesseract as tesseract
 
 import cv2 as cv
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
 from reportlab.pdfgen import canvas
 from PyPDF2 import PdfReader, PdfWriter
 from ultralytics import YOLO
@@ -221,7 +221,18 @@ class RecordProcessor:
             )
             cropped = image.crop(padded_bbox)
 
-            text = tesseract.image_to_string(cropped, config="--psm 6")
+
+            # Convert to grayscale
+            cropped = cropped.convert("L")
+
+            # Increase contrast
+            enhancer = ImageEnhance.Contrast(cropped)
+            cropped = enhancer.enhance(2)
+
+            # Sharpen the image
+            cropped = cropped.filter(ImageFilter.SHARPEN)
+
+            text = tesseract.image_to_string(cropped, config="--psm 6", lang="fra")
             print(f"\n||{text}||\n")
 
             valid = self.is_valid_section_header(text)
