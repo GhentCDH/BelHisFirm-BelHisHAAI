@@ -3,7 +3,6 @@ import re
 import gc
 from pathlib import Path
 import os
-import csv
 import io
 
 import torch
@@ -16,6 +15,7 @@ from reportlab.pdfgen import canvas
 from PyPDF2 import PdfReader, PdfWriter
 from ultralytics import YOLO
 
+from recordprocessing.pipeline import IOManager
 from src.utils import ComponentProcessor
 from src.recordprocessing.data import MappedPrediction
 from src.recordprocessing.data import Record
@@ -79,13 +79,8 @@ class RecordProcessor:
             end_header_bbox_page=0,
         )
 
-    def collect_image_files(self, folder_path: Path) -> list:
-        logger.info(f"Collecting image files from {folder_path}...")
-        image_files = sorted(list(Path(folder_path).glob("*.jpg")) + list(Path(folder_path).glob("*.jpeg")) + list(Path(folder_path).glob("*.tif")) + list(Path(folder_path).glob("*.jp2")))
-        return image_files 
-    
-    # This function detects if a Table prediction spans more than half of a page, which could mean that it overrides headers
 
+    # This function detects if a Table prediction spans more than half of a page, which could mean that it overrides headers
     def is_sus_table(self, prediction: MappedPrediction, image_width: int, image_height: int) -> bool:
         if prediction.label != "Table":
             return False
@@ -440,50 +435,12 @@ class RecordProcessor:
         pdf_type = "Searchable PDF" if has_ocr_text else "PDF (image-only)"
         logger.info(f"{pdf_type} created: {pdf_path}")
 
-    def update_records_csv(self, record_folder: Path) -> None:
-        """Update CSV file with current record information."""
-        csv_path = self.output_folder / "records_index.csv"
-        file_exists = csv_path.exists()
-        
-        # Prepare record data
-        record_data = {
-            'record_id': self.record.record_id,
-            'internal_record_number': self.record.internal_record_number,
-            'record_title': self.record.record_title,
-            'folder_name': record_folder.name,
-            'num_pages': len(self.record.images),
-            'start_page': self.record.start_header_bbox_page,
-            'end_page': self.record.end_header_bbox_page,
-            'start_bbox': str(self.record.start_header_bbox),
-            'end_bbox': str(self.record.end_header_bbox),
-        }
-        
-        # Write or append to CSV
-        with open(csv_path, 'a', newline='', encoding='utf-8') as f:
-            fieldnames = ['record_id', 'internal_record_number', 'record_title', 'folder_name', 'num_pages', 
-                         'start_page', 'end_page', 'start_bbox', 'end_bbox']
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            
-            if not file_exists:
-                writer.writeheader()
-            
-            writer.writerow(record_data)
-        
-        logger.info(f"CSV updated: {csv_path}")
-
     def generate_record(self) -> None:
         output_folder = self.output_folder
 
         os.makedirs(output_folder, exist_ok=True)
-        # Normalize folder name - remove/replace problematic characters
-        title = self.record.record_title
-        title = title.encode('ascii', errors='ignore').decode('ascii')  # Remove non-ASCII
-        title = re.sub(r'[<>:"/\\|?*]', '', title)  # Remove invalid filename chars
-        title = re.sub(r'\s+', '_', title)  # Replace whitespace with underscore
-        title = re.sub(r'_+', '_', title)  # Collapse multiple underscores
-        title = title.strip('_')  # Remove leading/trailing underscores
-        title = title[:30] if len(title) > 30 else title  # Limit length
-        folder_name = f"{int(self.record.record_id):03d}-{title}"
+
+        folder_name = IOManager.generate_folder_name(self.record)
         record_folder = output_folder / folder_name
         
         # Clear existing page files to prevent stale files from previous runs being included
@@ -544,11 +501,11 @@ class RecordProcessor:
         self.generate_pdf_from_images(record_folder, ocr_data)
 
         # Update CSV index
-        self.update_records_csv(record_folder)
+        IOManager.update_records_csv(self.record, record_folder, output_folder)
 
     def process_record(self, record_path: Path, output_folder: Path) -> None:
         self.output_folder = output_folder
-        images = self.collect_image_files(record_path)
+        images = IOManager.collect_image_files(record_path)
 
         id = 0
         record_page_idx = -1
