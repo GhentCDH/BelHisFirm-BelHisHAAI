@@ -8,7 +8,7 @@ from PIL import ImageDraw
 
 logger = getLogger(__name__)
 
-from recordprocessing.data import ConfigParameter
+from src.recordprocessing.data import ConfigParameter
 
 class ImageProcessor:
 

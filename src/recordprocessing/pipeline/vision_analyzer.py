@@ -1,3 +1,4 @@
+import cv2
 import numpy as np
 import pytesseract as tesseract
 
@@ -18,7 +19,12 @@ logger = logging.getLogger(__name__)
 class VisionAnalyzer:
 
     def __init__(self, config: ConfigParameter, yolo_model_file_path: str):
+
         self.yolo_model = YOLO(yolo_model_file_path)
+
+        # Clear cache after model initialization
+        GPUController.clear_gpu_memory()
+
         self.image_processor = ImageProcessor(config)
         self.config = config
 
@@ -93,17 +99,19 @@ class VisionAnalyzer:
                 min(image.height, bbox[3] + self.config.padding),
             )
 
+            def prepare_for_ocr(pil_image) -> Image.Image:
+                cv_img = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2GRAY)
+
+                cv_img = cv2.resize(cv_img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+
+                cv_img = cv2.GaussianBlur(cv_img, (3, 3), 0)
+
+                _, binary = cv2.threshold(cv_img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+                return Image.fromarray(binary)
+
             cropped = image.crop(padded_bbox)
-
-            # Convert to grayscale
-            cropped = cropped.convert("L")
-
-            # Increase contrast
-            enhancer = ImageEnhance.Contrast(cropped)
-            cropped = enhancer.enhance(2)
-
-            # Sharpen the image
-            cropped = cropped.filter(ImageFilter.SHARPEN)
+            cropped = prepare_for_ocr(cropped)
 
             text = tesseract.image_to_string(cropped, config="--psm 6", lang="fra")
             print(f"\n||\n{text}\n||\n")
@@ -163,7 +171,7 @@ class VisionAnalyzer:
             for result in results:
                 mapped_prediction = ResultProcessor.process_result(result, x1 + region_x_offset, y1)
 
-                mapped_predictions.append(mapped_prediction)
+                mapped_predictions.extend(mapped_prediction)
 
         return mapped_predictions
 
