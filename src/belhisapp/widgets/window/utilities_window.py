@@ -2,7 +2,7 @@ from src.belhisapp.config import ConfigField, BuildFormResult, FormBuilder
 from src.belhisapp.widgets.window import Window
 from src.belhisapp.type_helper import FunctionInspector
 
-from src.recordprocessing.processor import RecordProcessor
+from src.recordprocessing.record_processor import RecordProcessor
 
 from textual.containers import Center
 
