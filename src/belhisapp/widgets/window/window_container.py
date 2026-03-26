@@ -18,8 +18,8 @@ class WindowContainer(Container):
 
             Args: window (Window): Window to display
         """
-        if self._window == window:
-            return
+
+        self._window = None
 
         self._window = window
 

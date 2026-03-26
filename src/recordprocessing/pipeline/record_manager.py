@@ -1,17 +1,14 @@
-import os
 import re
-import json
 
 from pathlib import Path
 from PIL import Image
 
-from recordprocessing.OCR import OCRProcessor
-from recordprocessing.data import ConfigParameter
-from recordprocessing.pipeline import VisionAnalyzer, ImageProcessor
+from src.recordprocessing import OCRProcessor
+from src.recordprocessing.data import ConfigParameter
+from src.recordprocessing.pipeline import VisionAnalyzer, ImageProcessor
 from src.recordprocessing.data import Record
 
-from src.recordprocessing.pipeline.io_manager import IOManager
-from src.recordprocessing.utils.gpu_controller import GPUController
+from src.recordprocessing.utils import GPUController
 
 from logging import getLogger
 logger = getLogger(__name__)

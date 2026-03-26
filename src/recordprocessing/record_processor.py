@@ -2,9 +2,8 @@ from pathlib import Path
 
 from src.recordprocessing.data import ConfigParameter
 
-from src.recordprocessing.pipeline import IOManager
+from src.recordprocessing.pipeline import IOManager, RecordManager
 from src.recordprocessing.utils import GPUController
-from src.recordprocessing.pipeline.record_manager import RecordManager
 
 try:
     from .OCR import OCRProcessor
@@ -28,7 +27,7 @@ class RecordProcessor:
 
         self.record_manager = RecordManager(self.config, model_file_path)
 
-    def run(self, input_path: Path, output_folder: Path):
+    def run(self, input_path: Path, output_path: Path):
 
         image_paths = IOManager.collect_image_files(input_path)
 
@@ -38,7 +37,7 @@ class RecordProcessor:
 
             # Generate folder path arguments
             folder_name = IOManager.generate_folder_name(record)
-            record_folder = output_folder / folder_name
+            record_folder = output_path / folder_name
 
             # Save record to output folder
             IOManager.save_record_images(record, record_folder)
@@ -53,7 +52,7 @@ class RecordProcessor:
             IOManager.generate_pdf_from_record(record_folder, ocr_data)
 
             # Write record to the CSV file
-            IOManager.update_records_csv(record, record_folder, output_folder)
+            IOManager.update_records_csv(record, record_folder, output_path)
 
         GPUController.clear_gpu_memory()
         logger.info("Pipeline finished, GPU memory cleared.")

@@ -29,12 +29,16 @@ class BelhisApp(App):
         self._window_container.set_window(default_window)
 
     def on_footer_option_selected(self, message: FooterOption.Selected) -> None:
+
         if message.option == "quit":
             self.exit()
+
         elif message.option == "config":
+
             config_window: ConfigWindow = ConfigWindow()
             self._window_container.set_window(config_window)
             config_window.load_json()
+
         elif message.option == "utils":
-            utilities_window: UtilitiesWindow = UtilitiesWindow()
+            utilities_window: UtilitiesWindow = UtilitiesWindow(self._window_container)
             self._window_container.set_window(utilities_window)
