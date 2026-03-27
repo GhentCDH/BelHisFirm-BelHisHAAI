@@ -49,7 +49,7 @@ class ConfigWindow(Window):
 
         # Save JSON
         if event.button == self._save_button:
-            result: ConfigOperationResult = ConfigParser.save_config(ConfigConstants.CONFIG_FILE_PATH, self._config_inputs)
+            result: ConfigOperationResult = ConfigParser.save_config_to_json(ConfigConstants.CONFIG_FILE_PATH, self._config_inputs)
 
             self._log_result(result)
 

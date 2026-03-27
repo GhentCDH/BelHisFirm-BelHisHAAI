@@ -10,8 +10,6 @@ from huggingface_hub import logging as hf_logging
 
 hf_logging.set_verbosity_error()
 
-"""
-
 app = BelhisApp()
 app.run()
 
@@ -32,3 +30,4 @@ args = parser.parse_args()
 
 processor = RecordProcessor(skip_ocr=args.no_ocr)
 processor.run(args.input_folder, args.output_folder)
+"""

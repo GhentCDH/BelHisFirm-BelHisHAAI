@@ -40,17 +40,14 @@ class FooterWidget(Horizontal):
 
     def on_key(self, event) -> None:
 
-        # Remove selected CSS class from all buttons
-        for i, child in enumerate(self.query(FooterOption)):
-            child.remove_class("selected")
-
         # Change selected index based off user input
-        if event.key == "left":
-            self.selected_index = (self.selected_index - 1) % len(self.options)
+        if event.key == "left" or event.key == "right":
+            self.selected_index = (self.selected_index - (1 if event.key == "left" else -1)) % len(self.options)
             event.stop()
-        elif event.key == "right":
-            self.selected_index = (self.selected_index + 1) % len(self.options)
-            event.stop()
+
+            # Remove selected CSS class from all buttons
+            for i, child in enumerate(self.query(FooterOption)):
+                child.remove_class("selected")
         elif event.key == "enter":
 
             # Add selected class to selected button
