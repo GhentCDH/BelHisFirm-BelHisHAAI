@@ -105,8 +105,17 @@ class AppConstants:
             scrollbar-color-active: lightsteelblue;
         }
         
-        #default-window-text{
+        #default-window-text {
             text-style: bold;
+        }
+        
+        #easter-text {
+            text-style: bold;
+        }
+        
+        #easter-shark {
+            content-align: center middle;
+            text-align: center;
         }
         
         .FormHeader {
