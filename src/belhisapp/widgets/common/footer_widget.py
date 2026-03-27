@@ -48,6 +48,7 @@ class FooterWidget(Horizontal):
             # Remove selected CSS class from all buttons
             for i, child in enumerate(self.query(FooterOption)):
                 child.remove_class("selected")
+
         elif event.key == "enter":
 
             # Add selected class to selected button

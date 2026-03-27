@@ -1,47 +1,36 @@
-from textual.containers import Center, Horizontal, Vertical
-from textual.widget import Widget
+from textual.containers import Center
 from textual.widgets import Static, Button
 
-from src.belhisapp.config import ConfigInput, ConfigOperationResult, ConfigParser, FormBuilder
+from src.belhisapp.config import ConfigOperationResult, ConfigParser, FormBuilder
 from src.belhisapp.widgets.window import Window
 from src.belhisapp.constants import ConfigConstants, AppConstants
 
-from src.belhisapp.config.build_form_result import BuildFormResult
-
 class ConfigWindow(Window):
+    """ Window object representing the configuration window."""
 
-    _header: Static
+    def __init__(self) -> None:
 
-    _form: Center
-    _config_inputs: list[ConfigInput]
-
-    _save_button: Button
-    _reset_button: Button
-
-    _error_log: Static
-
-    def __init__(self):
         # Build form from config fields
-        form_build_result: BuildFormResult = FormBuilder.build_form(ConfigConstants.CONFIG_FIELDS)
+        form_build_result = FormBuilder.build_form(ConfigConstants.CONFIG_FIELDS)
 
-        self._form: Center = form_build_result.form
+        self._form = form_build_result.form
 
-        self._config_inputs: list[ConfigInput] = form_build_result.config_inputs
+        self._config_inputs = form_build_result.config_inputs
 
         # Define save button
-        self._save_button: Button = Button("Save", classes="FormButton")
+        self._save_button = Button("Save", classes="FormButton")
 
         # Define reset button
-        self._reset_button: Button = Button("Reset", classes="FormButton")
+        self._reset_button = Button("Reset", classes="FormButton")
 
         # Define header
-        self._header: Static = Static(AppConstants.CONFIG_LOGO, classes="FormHeader")
+        self._header = Static(AppConstants.CONFIG_LOGO, classes="FormHeader")
 
         # Define error log
-        self._error_log: Static =  Static("", classes="FormError")
+        self._error_log = Static("", classes="FormError")
 
         # These are the widgets that will load within the window (Static is a gap)
-        widgets: list[Widget] = [self._header, Static(""), self._form, Center(self._save_button), Static(""), Center(self._reset_button), Static(""), self._error_log]
+        widgets = [self._header, Static(""), self._form, Center(self._save_button), Static(""), Center(self._reset_button), Static(""), self._error_log]
 
         super().__init__(widgets)
 
@@ -49,7 +38,8 @@ class ConfigWindow(Window):
 
         # Save JSON
         if event.button == self._save_button:
-            result: ConfigOperationResult = ConfigParser.save_config_to_json(ConfigConstants.CONFIG_FILE_PATH, self._config_inputs)
+
+            result = ConfigParser.save_config_to_json(ConfigConstants.CONFIG_FILE_PATH, self._config_inputs)
 
             self._log_result(result)
 
@@ -57,14 +47,15 @@ class ConfigWindow(Window):
         elif event.button == self._reset_button:
             self.load_json()
 
-    def load_json(self):
+    def load_json(self) -> None:
 
         # Load JSON
-        result: ConfigOperationResult = ConfigParser.load_config(ConfigConstants.CONFIG_FILE_PATH, self._config_inputs, ConfigConstants.CONFIG_FIELDS)
+        result = ConfigParser.load_config(ConfigConstants.CONFIG_FILE_PATH, self._config_inputs, ConfigConstants.CONFIG_FIELDS)
 
         self._log_result(result)
 
-    def _log_result(self, result: ConfigOperationResult):
+    def _log_result(self, result: ConfigOperationResult) -> None:
+
         if not result.success:
             self._error_log.styles.color = "red"
         else:

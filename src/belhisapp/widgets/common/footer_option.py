@@ -1,4 +1,4 @@
-from textual.widgets import Button, Static
+from textual.widgets import Static
 from textual.message import Message
 
 class FooterOption(Static):

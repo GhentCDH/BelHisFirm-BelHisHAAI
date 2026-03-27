@@ -8,8 +8,9 @@ from src.belhisapp.type_helper import FunctionInspector
 from src.belhisapp.widgets.window import Window
 
 class UtilRunWindow(Window):
+    """ Window build from a method, this window will build dynamically build a parameter form to run that method. """
 
-    def __init__(self, label: str, method: Callable):
+    def __init__(self, label: str, method: Callable) -> None:
 
         header = Static(label, classes="FormHeader")
 

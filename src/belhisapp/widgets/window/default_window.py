@@ -6,7 +6,7 @@ class DefaultWindow(Window):
     """ Window object containing widgets displayed at app creation """
 
     def __init__(self) -> None:
-        shark: Static = Static(AppConstants.SHARK)
-        info: Static = Static(AppConstants.INFO, id="default-window-text")
+        shark = Static(AppConstants.SHARK)
+        info = Static(AppConstants.INFO, id="default-window-text")
 
         super().__init__([shark, info])

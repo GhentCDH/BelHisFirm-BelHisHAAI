@@ -6,12 +6,12 @@ from .header_item import HeaderItem
 class HeaderWidget(Vertical):
     """ Header widget with customizable header items. """
 
-    items: list[HeaderItem]
-
     def __init__(self, items: list[HeaderItem], **kwargs) -> None:
+
         super().__init__(**kwargs)
         self.items = items
 
     def compose(self) -> ComposeResult:
+
         for i, item in enumerate(self.items):
             yield item

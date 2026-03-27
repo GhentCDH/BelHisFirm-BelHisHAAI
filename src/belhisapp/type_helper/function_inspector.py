@@ -10,12 +10,12 @@ class FunctionInspector:
     def get_function_params(function: Callable) -> list[dict]:
         """ Inspects a given function for its parameters.
 
-        Args: function (Callable): Function to inspect.
+            Args: function (Callable): Function to inspect.
 
-        Returns: A list of dictionaries containing parameter name, type, and their default value if present.
+            Returns: A list of dictionaries containing parameter name, type, and their default value if present.
         """
         sig = inspect.signature(function)
-        params: list[dict] = []
+        params = []
         for name, param in sig.parameters.items():
 
             # Determine if the parameter has a default
@@ -31,12 +31,12 @@ class FunctionInspector:
     def parse_config_fields_from_function_inspection(params: list[dict], auto_rename: bool = True) -> list[ConfigField]:
         """ Converts a list of dictionaries containing parameter name, type, and default value to a list of ConfigFields.
 
-        Args: params (list[dict]): List of dictionaries containing parameter name, type, and default value.
+            Args: params (list[dict]): List of dictionaries containing parameter name, type, and default value.
 
-        Returns: A new list of ConfigFields based off given parameters.
+            Returns: A new list of ConfigFields based off given parameters.
         """
 
-        config_fields: list[ConfigField] = []
+        config_fields = []
 
         for param in params:
 

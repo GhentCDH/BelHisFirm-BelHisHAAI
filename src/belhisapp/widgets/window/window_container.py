@@ -6,8 +6,6 @@ from .window import Window
 class WindowContainer(Container):
     """ Container which recomposes dynamically to display Window objects"""
 
-    _window: Window | None
-
     def __init__(self) -> None:
         super().__init__()
         self._window = None
@@ -18,8 +16,6 @@ class WindowContainer(Container):
 
             Args: window (Window): Window to display
         """
-
-        self._window = None
 
         self._window = window
 

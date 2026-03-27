@@ -1,6 +1,5 @@
 from textual.containers import Center, Vertical
 from textual.widgets import Button, Static
-from textual.widget import Widget
 
 from src.belhisapp.constants import AppConstants
 from src.belhisapp.widgets.window.window_container import WindowContainer
@@ -10,6 +9,7 @@ from src.belhisapp.widgets.window import Window
 from src.belhisapp.constants import UtilConstants
 
 class UtilitiesWindow(Window):
+    """ Utilities window, renders buttons specified in the UtilConstants and switches to their window based on which one is selected. """
 
     def __init__(self, window_container: WindowContainer) -> None:
 
@@ -19,7 +19,7 @@ class UtilitiesWindow(Window):
         self.header = Static(AppConstants.UTIL_LOGO, classes="FormHeader")
 
         # Build widget list of buttons for the window to display
-        self.widgets: list[Widget] = []
+        self.widgets = []
 
         # Rebuild buttons because this window is recreated after being unmounted
         for util_button in UtilConstants.UtilButtons:

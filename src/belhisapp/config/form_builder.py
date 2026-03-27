@@ -15,7 +15,7 @@ class FormBuilder:
         """
 
         config_inputs = []
-        rows: list[Horizontal] = []
+        rows = [] # List of horizontal containers
 
         # Build a row for every config field with an input box and a label
         for config_field in config_fields:
@@ -27,6 +27,6 @@ class FormBuilder:
 
             rows.append(Horizontal(label, config_input, classes="FormRow"))
 
-        form: Center = Center(Vertical(*rows))
+        form = Center(Vertical(*rows))
 
         return BuildFormResult(form, config_inputs)

@@ -5,12 +5,12 @@ class Convert:
 
     @staticmethod
     def convert_value(value: str, target_type: type) -> ConvertResult:
-        """ Helper to convert string input to a specified type.
+        """ Helper to convert string input to a specified type (in respect to the constraints of the configuration window).
 
-        Args: value (str): Value to be converted.
-        Args: target_type (type): Type to convert to.
+            Args: value (str): Value to be converted.
+            Args: target_type (type): Type to convert to.
 
-        Returns: Converted value.
+            Returns: Converted value.
         """
 
         try:
