@@ -134,6 +134,7 @@ class AppConstants:
             background: midnightblue;
             border: round steelblue;
             color: white;
+            padding-right: 2;
         }
         
         .FormTextbox:focus {

@@ -21,9 +21,6 @@ class ConfigWindow(Window):
     _error_log: Static
 
     def __init__(self):
-
-        gap = Static("")
-
         # Build form from config fields
         form_build_result: BuildFormResult = FormBuilder.build_form(ConfigConstants.CONFIG_FIELDS)
 
@@ -34,21 +31,17 @@ class ConfigWindow(Window):
         # Define save button
         self._save_button: Button = Button("Save", classes="FormButton")
 
-        gap2 = Static("")
-
         # Define reset button
         self._reset_button: Button = Button("Reset", classes="FormButton")
 
         # Define header
         self._header: Static = Static(AppConstants.CONFIG_LOGO, classes="FormHeader")
 
-        gap3 = Static("")
-
         # Define error log
         self._error_log: Static =  Static("", classes="FormError")
 
-        # These are the widgets that will load within the window
-        widgets: list[Widget] = [self._header, gap, self._form, Center(self._save_button), gap2, Center(self._reset_button), gap3, self._error_log]
+        # These are the widgets that will load within the window (Static is a gap)
+        widgets: list[Widget] = [self._header, Static(""), self._form, Center(self._save_button), Static(""), Center(self._reset_button), Static(""), self._error_log]
 
         super().__init__(widgets)
 

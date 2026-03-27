@@ -1,5 +1,6 @@
 from textual.containers import Center, Vertical
 from textual.widgets import Button, Static
+from textual.widget import Widget
 
 from src.belhisapp.constants import AppConstants
 from src.belhisapp.widgets.window.window_container import WindowContainer
@@ -17,21 +18,24 @@ class UtilitiesWindow(Window):
 
         self.header = Static(AppConstants.UTIL_LOGO, classes="FormHeader")
 
-        gap = Static("")
-
-        self.buttons: list[Button] = []
-
         # Build widget list of buttons for the window to display
-        for button in UtilConstants.UtilButtons.keys():
-            self.buttons.append(button)
+        self.widgets: list[Widget] = []
 
-        super().__init__([self.header, gap, Center(Vertical(*self.buttons))])
+        # Rebuild buttons because this window is recreated after being unmounted
+        for util_button in UtilConstants.UtilButtons:
+
+            button = Button(util_button.label, classes="FormButton")
+            button.method = util_button.method
+
+            self.widgets.append(Center(button))
+
+            self.widgets.append(Center(Static(""))) # Hacky way to add gap between buttons, padding isn't willing to work right now
+
+        super().__init__([self.header, Static(""), Vertical(*self.widgets)])
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
 
-        # Get the callable method associated with this button
-        method = UtilConstants.UtilButtons[event.button]
-
+        method = event.button.method  # Pycharm does not like this but it works
         label = str(event.button.label)
 
         self._window_container.set_window(UtilRunWindow(label, method))

@@ -18,7 +18,7 @@ class RecordProcessor:
     def __init__(self, skip_ocr: bool = False):
 
         # File path to YOLO model
-        model_file_path: str = "/home/sndr/PycharmProjects/belhisfirm-belhishaai/model/best.pt"
+        model_file_path: str = "/Users/sander/PycharmProjects/BelHisFirm-BelHisHAAI/model/best.pt"
 
         # Labels to exclude from OCR output (add more labels here as needed)
         ocr_excluded_labels = {"Table", "Picture", "Figure", "Form", "Handwriting", "Formula"}

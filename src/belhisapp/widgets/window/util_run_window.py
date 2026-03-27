@@ -1,9 +1,8 @@
 from typing import Callable
 
-from pyfiglet import Figlet
-from textual.widgets import Static
+from textual.containers import Vertical, Center
+from textual.widgets import Static, Button
 
-from src.belhisapp.constants import AppConstants
 from src.belhisapp.config import ConfigInput
 from src.belhisapp.config import FormBuilder
 from src.belhisapp.type_helper import FunctionInspector
@@ -15,8 +14,7 @@ class UtilRunWindow(Window):
 
     def __init__(self, label: str, method: Callable):
 
-        f = Figlet('shadow')
-        header = Static(f.renderText(label), classes="FormHeader")
+        header = Static(label, classes="FormHeader")
 
         # Build form from given method
         params = FunctionInspector.get_function_params(method)
@@ -24,5 +22,6 @@ class UtilRunWindow(Window):
         form_build_result = FormBuilder.build_form(config_fields)
 
         self._config_inputs = form_build_result.config_inputs
+        self.execute_button = Button("Execute", classes="FormButton")
 
-        super().__init__([header, Static(""), form_build_result.form])
+        super().__init__([header, Static(""), form_build_result.form, Static(""), Center(self.execute_button)])
