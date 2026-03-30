@@ -1,0 +1,61 @@
+from textual.containers import Horizontal
+from textual.reactive import reactive
+from textual.app import ComposeResult
+
+from src.belhisapp.widgets.common import FooterOption
+
+class FooterWidget(Horizontal):
+    """ Footer widget with navigable options."""
+
+    selected_index = reactive(0)
+    options: list[str]
+
+    def __init__(self, options: list[str], **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.options = options
+
+    def compose(self) -> ComposeResult:
+        num_options = len(self.options)
+        for i, option in enumerate(self.options):
+            btn = FooterOption(option)
+
+            # Decide button width automatically based off number of options
+            btn.styles.width = int(100 / num_options)
+            yield btn
+
+    def on_mount(self) -> None:
+        self.can_focus = True
+        self._update_selection()
+
+    def _update_selection(self) -> None:
+        # Add hover CSS class to parent child at selected index
+        for i, child in enumerate(self.query(FooterOption)):
+            if i == self.selected_index:
+                child.add_class("hover")
+            else:
+                child.remove_class("hover")
+
+    def watch_selected_index(self) -> None:
+        self._update_selection()
+
+    def on_key(self, event) -> None:
+
+        # Change selected index based off user input
+        if event.key == "left" or event.key == "right":
+            self.selected_index = (self.selected_index - (1 if event.key == "left" else -1)) % len(self.options)
+            event.stop()
+
+            # Remove selected CSS class from all buttons
+            for i, child in enumerate(self.query(FooterOption)):
+                child.remove_class("selected")
+
+        elif event.key == "enter":
+
+            # Add selected class to selected button
+            for i, child in enumerate(self.query(FooterOption)):
+                if i == self.selected_index:
+                    child.add_class("selected")
+
+            option = self.options[self.selected_index]
+            self.post_message(FooterOption.Selected(option))
+            event.stop()

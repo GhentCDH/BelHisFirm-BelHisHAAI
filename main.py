@@ -1,142 +1,33 @@
-import json
+import argparse
+import logging
+
 from pathlib import Path
 
-from textual.app import App, ComposeResult
-from textual.widgets import Static
-from textual.reactive import reactive
-from textual.containers import Vertical
-from textual.message import Message
+from src.belhisapp.app import BelhisApp
+from src.recordprocessing.record_processor import RecordProcessor
 
-# Load shark animation frames from JSON
-SHARK_FRAMES = json.loads(Path(__file__).parent.joinpath("assets/animated_shark.json").read_text())
+from huggingface_hub import logging as hf_logging
 
-LOGO = """
-    ██████╗░███████╗██╗░░░░░██╗░░██╗██╗░██████╗██╗░░██╗░█████╗░░█████╗░██╗
-    ██╔══██╗██╔════╝██║░░░░░██║░░██║██║██╔════╝██║░░██║██╔══██╗██╔══██╗██║
-    ██████╦╝█████╗░░██║░░░░░███████║██║╚█████╗░███████║███████║███████║██║
-    ██╔══██╗██╔══╝░░██║░░░░░██╔══██║██║░╚═══██╗██╔══██║██╔══██║██╔══██║██║
-    ██████╦╝███████╗███████╗██║░░██║██║██████╔╝██║░░██║██║░░██║██║░░██║██║
-    ╚═════╝░╚══════╝╚══════╝╚═╝░░╚═╝╚═╝╚═════╝░╚═╝░░╚═╝╚═╝░░╚═╝╚═╝░░╚═╝╚═╝
-"""
+hf_logging.set_verbosity_error()
 
-INFO = """
-                  Welcome to BelHisHAAI V.0.1 Alpha
-                  @basvercruysse @vincentducatteeuw 
+app = BelhisApp()
+app.run()
 
 """
 
-class Logo(Static):
-    pass
+logging.basicConfig(level=logging.INFO)
 
-class Haai(Static):
-    frame = reactive(0)
+parser = argparse.ArgumentParser(description="Process historical records with OCR")
+parser.add_argument("input_folder", type=Path, nargs="?",
+                        default=Path("/Users/sander/PycharmProjects/BelHisFirm-BelHisHAAI/images"),
+                        help="Path to folder containing input images")
+parser.add_argument("output_folder", type=Path, nargs="?",
+                        default=Path("/Users/sander/PycharmProjects/BelHisFirm-BelHisHAAI/output"),
+                        help="Path to output folder for processed records")
+parser.add_argument("--no-ocr", action="store_true",
+                        help="Skip OCR processing (only extract and save images)")
+args = parser.parse_args()
 
-    def on_mount(self) -> None:
-        self.set_interval(0.5, self.next_frame)
-
-    def next_frame(self) -> None:
-        self.frame = (self.frame + 1) % len(SHARK_FRAMES)
-
-    def watch_frame(self, frame: int) -> None:
-        self.update(SHARK_FRAMES[str(frame + 1)])
-
-class FooterOption(Static):
-
-    class Selected(Message):
-        """Message sent when an option is selected."""
-        def __init__(self, option: str) -> None:
-            self.option = option
-            super().__init__()
-
-    def __init__(self, label: str, **kwargs) -> None:
-        super().__init__(label, **kwargs)
-        self.label = label
-
-    def on_click(self) -> None:
-        self.post_message(self.Selected(self.label))
-
-
-class FooterWidget(Vertical):
-    """Footer widget with navigable options."""
-
-    selected_index = reactive(0)
-
-    def __init__(self, options: list[str], **kwargs) -> None:
-        super().__init__(**kwargs)
-        self.options = options
-
-    def compose(self) -> ComposeResult:
-        for i, option in enumerate(self.options):
-            yield FooterOption(option, id=f"footer-option-{i}")
-
-    def on_mount(self) -> None:
-        self.can_focus = True
-        self._update_selection()
-
-    def _update_selection(self) -> None:
-        for i, child in enumerate(self.query(FooterOption)):
-            if i == self.selected_index:
-                child.add_class("selected")
-            else:
-                child.remove_class("selected")
-
-    def watch_selected_index(self, value: int) -> None:
-        self._update_selection()
-
-    def on_key(self, event) -> None:
-        if event.key == "up":
-            self.selected_index = (self.selected_index - 1) % len(self.options)
-            event.stop()
-        elif event.key == "down":
-            self.selected_index = (self.selected_index + 1) % len(self.options)
-            event.stop()
-        elif event.key == "enter":
-            option = self.options[self.selected_index]
-            self.post_message(FooterOption.Selected(option))
-            event.stop()
-
-
-class BelHisApp(App):
-    CSS = """
-    Logo {
-        color: skyblue;
-    }
-
-    Haai {
-        color: cornflowerblue;
-    }
-
-    FooterWidget {
-        dock: bottom;
-        height: 20%;
-        padding: 1;
-        border-top: solid $primary;
-    }
-
-    FooterOption {
-        padding: 0 2;
-        width: 100%;
-    }
-
-    FooterOption.selected {
-        background: lightskyblue;
-        color: $text;
-        text-style: bold;
-    }
-    """
-
-    def compose(self) -> ComposeResult:
-        yield Logo(LOGO)
-        yield Haai()
-        yield Logo(INFO)
-        yield FooterWidget(["utils", "config", "quit"])
-
-    def on_footer_option_selected(self, message: FooterOption.Selected) -> None:
-        if message.option == "quit":
-            self.exit()
-        else:
-            self.notify(f"Selected: {message.option}")
-
-
-if __name__ == "__main__":
-    BelHisApp().run()
+processor = RecordProcessor(skip_ocr=args.no_ocr)
+processor.run(args.input_folder, args.output_folder)
+"""
