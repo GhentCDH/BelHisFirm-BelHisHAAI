@@ -203,13 +203,15 @@ def generate_relations(
 
 if __name__ == "__main__":
     labels = None
-    text = "Le soussigné, Moritz Stern, industriel, demeurant à Francfort-sur-Mein, propriétaire."
+    text = "MM. Louis van Langenhove et Joseph Alsberge, administrateurs sortants et rééligibles, sont réélus administrateurs."
 
     # Show text spans
     create_text_spans(text)
 
     # Generate relations for multiple entity pairs
 
+    # Test_1
+    # text = "Le soussigné, Moritz Stern, industriel, demeurant à Francfort-sur-Mein, propriétaire."
     """
     generate_relations(
         text,
@@ -243,33 +245,29 @@ if __name__ == "__main__":
         num_outputs=1,
     )
     """
+
+
+    text= "MM. Louis van Langenhove et Joseph Alsberge, administrateurs sortants et rééligibles, sont réélus administrateurs."
+    
     generate_relations(
         text,
         labels,
         entity_pairs=(
             (
-                "Moritz Stern",
-                "Francfort-sur-Mein",
-                (14, 27),
+                "Louis van Langenhove",
+                "administrateurs",
+                (4, 24),
                 (52, 71),
                 "PERSON",
-                "LOCATION",
+                "CORPORATE_POSITION",
             ),
             (
-                "Moritz Stern",
-                "industriel",
-                (14, 27),
-                (28, 39),
+                "Joseph Alsberge",
+                "administrateurs",
+                (28, 44),
+                (52, 71),
                 "PERSON",
-                "OCCUPATION",
-            ),
-            (
-                "Moritz Stern",
-                "propriétaire",
-                (14, 27),
-                (72, 85),
-                "PERSON",
-                "CORPORATE_TITLE",
+                "CORPORATE_POSITION",
             ),
         ),
         num_outputs=1,
