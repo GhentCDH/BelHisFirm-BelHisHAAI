@@ -1,0 +1,8 @@
+{
+    "_labels": "This JSON contains all labels used in the GroundTruth of the CRF model. Add/remove here if new labels are added/removed to the training data! NEVER USE NA AS A KEY SINCE THAT IS TRANSLATED AS NAN", 
+    "ID": "RecordID",
+    "N": "Name",
+    "AD": "Addres",
+    "EV": "Event",
+    "EX": "ExtraInformation"
+}

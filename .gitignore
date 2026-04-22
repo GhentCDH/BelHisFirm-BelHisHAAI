@@ -219,3 +219,7 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# index_parser
+src/index_parser/model/
+src/index_parser/CRF/BelHisFirm-GT/
