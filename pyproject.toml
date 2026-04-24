@@ -11,6 +11,7 @@ dependencies = [
     "numpy>=2.4.1",
     "nvidia-nccl-cu13>=2.29.7",
     "opencv-python>=4.13.0.90",
+    "pandas>=3.0.2",
     "pypdf2>=3.0.1",
     "pytesseract>=0.3.13",
     "reportlab>=4.4.10",

@@ -15,13 +15,13 @@ class Output_CRF:
 
     # Check if the output directory exists, if not, create it
     def check_if_output_exists(self):
-        if not os.path.exists('index_parser/output/'):  # Check if the directory exists
-            os.mkdir('index_parser/output/')  # Create the directory if it doesn't exist
+        if not os.path.exists('src/index_parser/output/'):  # Check if the directory exists
+            os.mkdir('src/index_parser/output/')  # Create the directory if it doesn't exist
 
     # Collect labels from a JSON file and store them in the object's attributes
     def collect_labels(self):
         # Open and read the JSON file that contains the label information
-        with open('index_parser/CRF/labels/labels.json') as json_file:
+        with open('src/index_parser/CRF/labels/labels.json') as json_file:
             labels_json = json.load(json_file)  # Load the JSON data into a Python dictionary
             json_file.close()
         
@@ -70,7 +70,7 @@ class Output_CRF:
         df = pd.DataFrame(columns=self.columns)  # Create a new DataFrame with the appropriate columns
         for line in lines:
             df = pd.concat([df, pd.Series(line, index=df.columns)], ignore_index=True)  # Append each line to the DataFrame
-        df.to_csv(f'index_parser/output/{file}_{index}_{filename}.csv', index=False)  # Save the DataFrame to a CSV file
+        df.to_csv(f'src/index_parser/output/{file}_{index}_{filename}.csv', index=False)  # Save the DataFrame to a CSV file
         self.clean()  # Clean up the attributes after saving the file
         self.clean()  # Clean up the attributes after saving the file
 
@@ -81,7 +81,7 @@ class Output_CRF:
         df = pd.DataFrame(columns=self.columns)  # Create a new DataFrame with the appropriate columns
         for line in lines:
             df = pd.concat([df, pd.DataFrame([line], columns=df.columns)], ignore_index=True)  # Append each line to the DataFrame
-        df.to_excel(f'index_parser/output/{file}_{index}_{filename}.xlsx', index=False)  # Save the DataFrame to an Excel file
+        df.to_excel(f'src/index_parser/output/{file}_{index}_{filename}.xlsx', index=False)  # Save the DataFrame to an Excel file
         self.clean()  # Clean up the attributes after saving the file
 
     # Get the ANSI color code corresponding to a particular color index

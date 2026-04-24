@@ -15,11 +15,12 @@ class TextExtractor2:
 
     def extract_text_lines(self, image_path):
         with Image.open(image_path) as pil_image:
-            image = pil_image.convert("RGB")
-        w, h = image.size
+            source_image = pil_image.copy()
+            detection_image = pil_image.convert("RGB")
+        w, h = source_image.size
 
         # surya lay out predictions
-        predictions = self.lym([image])
+        predictions = self.lym([detection_image])
 
         linepos1 = int(w / 3)
         linepos2 = int((2 * w) / 3)
@@ -77,16 +78,27 @@ class TextExtractor2:
         left_outlier_ids = {id(box) for box in left_outliers}
         right_outlier_ids = {id(box) for box in right_outliers}
 
+        def sort_boxes_by_side(boxes):
+            side_priority = {"heading": 0, "left": 1, "right": 2}
+
+            def sort_key(box):
+                side = assign_side(box)
+                x1, y1, _, _ = box.bbox
+                return (side_priority[side], y1, x1)
+
+            return sorted(boxes, key=sort_key)
+
         line_crops_with_outlier = []
         if page_prediction is not None:
-            for box in page_prediction.bboxes:
+            sorted_boxes = sort_boxes_by_side(page_prediction.bboxes)
+            for box in sorted_boxes:
                 x1, y1, x2, y2 = map(int, box.bbox)
                 x1 = max(0, min(x1, w - 1))
                 y1 = max(0, min(y1, h - 1))
                 x2 = max(x1 + 1, min(x2, w))
                 y2 = max(y1 + 1, min(y2, h))
 
-                cropped_line = image.crop((x1, y1, x2, y2))
+                cropped_line = source_image.crop((x1, y1, x2, y2))
                 side = assign_side(box)
                 is_outlier = False
                 if side == "left":
@@ -128,7 +140,7 @@ class TextExtractor2:
         if self.debug:
 
             # Show the image with lines and boxes
-            cv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+            cv_image = cv2.cvtColor(np.array(detection_image), cv2.COLOR_RGB2BGR)
 
             cv2.line(cv_image, (linepos1, 0), (linepos1, h), (0, 255, 255), 3)
             cv2.line(cv_image, (linepos2, 0), (linepos2, h), (0, 255, 255), 3)
