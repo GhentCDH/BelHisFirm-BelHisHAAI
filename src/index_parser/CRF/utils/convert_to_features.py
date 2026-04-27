@@ -1,7 +1,8 @@
-import os
 import json
 from functools import partial
 from pathlib import Path
+import unicodedata
+import regex as re
 
 # This class handles the conversion of strings to feature representations 
 # for training a CRF (Conditional Random Field) model.
@@ -9,81 +10,84 @@ from pathlib import Path
 class Convert_To_Features:
 
     @staticmethod
-    # Tokenizes a string into individual tokens, handles special cases for '*',
-    # commas, and whitespace. Includes START and END tokens for ground-truth readability.
-    def tokenize_string(string):
-        tokenized_list = ["START"]  # Add START token to the beginning for CRF
-        token = ''
-        counter = 0
-        # Set of characters that are considered "weird" (e.g., special characters)
-        weird_characters = {'x', '"', '«', '»', '“', '”', '*', '-'}
+    def text_normalisation(text: str) -> str:
+        text = unicodedata.normalize("NFC", text)
 
-        # Iterate over each character in the string
-        for character in string:
-            if character in weird_characters and counter == 0:
-                if token:  # If there's an accumulated token, append it to the list
-                    tokenized_list.append(token)
-                    token = ''
-                tokenized_list.append('*')  # Add '*' token for special characters
-            elif character == ',':
-                if token:
-                    tokenized_list.append(token)
-                    token = ''
-                tokenized_list.append(character)  # Add comma as a token
-            elif character == ' ':
-                if token:  # If there's a token, append it
-                    tokenized_list.append(token)
-                token = ''  # Reset the token
-            else:
-                token += character  # Build up the token
-            counter += 1
-        if token:
-            tokenized_list.append(token)  # Append any remaining token
+        text = text.replace("\u200B", "")
+        text = text.replace("\u00A0", " ")
 
-        tokenized_list.append("END")  # Add END token at the end for CRF
-        return tokenized_list
+        text = re.sub(r"[’‘ʼʹ´`]", "'", text)
+        text = re.sub(r"[“”„‟«»]", '"', text)
+
+        text = re.sub(r"[–—―]", " — ", text)
+        text = re.sub(r"[‐-‒−]", "-", text)
+
+        text = text.replace("…", "...")
+        text = re.sub(r"[·•●]", ".", text)
+
+        text = re.sub(r"\s+([.,;:!?°])", r"\1", text)
+        text = re.sub(r"([.,;:!?])(?=\S)", r"\1 ", text)
+
+        text = re.sub(r"\s*—\s*", " — ", text)
+        text = re.sub(r"\s+", " ", text).strip()
+        text = re.sub(r"^[_\s]+", "", text)
+
+        return text
 
     @staticmethod
-    # Tokenizes the string into tokens and also creates corresponding labels for training.
-    # The labels are inserted as a separate list alongside the tokenized string.
-    def tokenize_training_string(string, label):
-        tokenized_list = []
-        token = ''
-        token_number = 0
-        # Iterate through the string, separating tokens by spaces and commas
-        for character in string:
-            if character == ' ':
-                if token:
-                    tokenized_list.append(token)  # Append the token when space is encountered
-                    token_number += 1
-                token = ''  # Reset the token
-            elif character == ',':
-                if token:
-                    tokenized_list.append(token)  # Append token for a comma
-                    token_number += 1
-                tokenized_list.append(',')  # Add comma as a separate token
-                label.insert(token_number, 'D')  # Insert label 'D' for comma
-                token_number += 1
-                token = ''  # Reset token after comma
-            else:
-                token += character  # Build up the token
-        if token:  # Append any remaining token
-            tokenized_list.append(token)
+    def tokenize_string(
+        string: str,
+        labels: list[str] | None = None,
+    ) -> list[str] | tuple[list[str], list[str]]:
 
-        return tokenized_list, label
+        token_pattern = re.compile(r"""
+            \p{L}+(?:['’]\p{L}+)?   # words, including d'associés
+        | \d+                     # numbers
+        | [—-]                    # dash / hyphen
+        | [.,;:!?()°/&"]           # punctuation
+        """, re.VERBOSE)
+
+        delimiters = {".", ",", ";", ":", "!", "?", "(", ")", "°", "/", "&", '"', "—", "-"}
+
+        normalized_string = Convert_To_Features.text_normalisation(string)
+        tokens = token_pattern.findall(normalized_string)
+
+        tokens = ["START"] + tokens + ["END"]
+
+        if labels is None:
+            return tokens
+
+        new_labels = ["START"]
+        label_index = 0
+
+        for token in tokens[1:-1]:
+            if token in delimiters:
+                new_labels.append("D")
+            else:
+                new_labels.append(labels[label_index])
+                label_index += 1
+
+        new_labels.append("END")
+
+        if label_index != len(labels):
+            raise ValueError(
+                f"Label/token mismatch: used {label_index} labels, "
+                f"but received {len(labels)} labels."
+            )
+
+        return tokens, new_labels
 
     @staticmethod
     # Extracts features for tokens based on neighboring tokens in the list.
-    def get_token_features_from_tokenized_list(list_with_tokens):
+    def generate_token_features(tokens):
         features = []
-
         # Iterate through each token in the list and gather features from neighboring tokens
-        for index, token in enumerate(list_with_tokens):
+        for index, token in enumerate(tokens):
             token_features = {}
             for rela_pos in range(-2, 3):  # Check for tokens in the range of -2 to 2 relative positions
                 shuffle_pos = index + rela_pos
-                if 0 <= shuffle_pos < len(list_with_tokens):  # Ensure the relative position is within bounds
-                    relative_token = list_with_tokens[shuffle_pos]
+                if 0 <= shuffle_pos < len(tokens):  # Ensure the relative position is within bounds
+                    relative_token = tokens[shuffle_pos]
                     token_features.update({f"{rela_pos}:token": relative_token})  # Add the relative token
                     # Add hard-coded features for each token (using feature functions defined below)
                     token_features.update({
@@ -132,7 +136,7 @@ class Convert_To_Features:
     @staticmethod
     # Check if the token corresponds to an event based on a predefined event list
     def __contains_event(token):
-        with open(Path(__file__).parent / "features" / "events.json", 'r') as file:
+        with open(Path(__file__).parent.parent / "features" / "events.json", 'r') as file:
             event_map = json.load(file)  # Load the event map from a JSON file
         return token in event_map.values()  # Check if the token is in the event list
 

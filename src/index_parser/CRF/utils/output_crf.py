@@ -4,7 +4,7 @@ import pandas as pd
 import datetime
 from pathlib import Path
 
-_CRF_DIR = Path(__file__).parent
+_CRF_DIR = Path(__file__).parent.parent
 _OUTPUT_DIR = _CRF_DIR.parent / 'output'
 _LABELS_FILE = _CRF_DIR / 'labels' / 'labels.json'
 
@@ -52,21 +52,24 @@ class Output_CRF:
         return tuple_list  # Return the list of tuples
 
     # Transform a list of tuples into a format suitable for CSV/Excel output
-    def transform_lines_to_csv_format(self, list_with_tuple_lists):
-        for tuple_list in list_with_tuple_lists:
-            converted_line = []  # Initialize an empty list to hold the converted line
-            while len(self.keys) != len(converted_line):  # Ensure the converted line matches the number of keys
-                converted_line.append("")  # Fill with empty strings to match the number of keys
-            for tuple_ in tuple_list:
-                token = tuple_[0]  # Get the token
-                index = tuple_[2]  # Get the corresponding color index
-                if 0 <= index < len(converted_line):  # Ensure the index is valid
-                    if converted_line[index] != "":  # If there's already text at the index
-                        converted_line[index] = f'{converted_line[index]} {token}'  # Append the token
-                    else:
-                        converted_line[index] = token  # Otherwise, just set the token
-            self.list_with_converted_lines.append(converted_line)  # Add the converted line to the list
-        return self.list_with_converted_lines  # Return the list of converted lines
+    def transform_line_to_csv_format(self, tuple_list, clean_delimiters=True):
+        delimiters = {".", ",", ";", ":", "!", "?", "(", ")", "°", "/", "&", '"', "—", "-"}
+
+        converted_line = [""] * len(self.keys)
+
+        for token, label, index in tuple_list:
+            if not (0 <= index < len(converted_line)):
+                continue
+
+            if clean_delimiters and token in delimiters:
+                continue
+
+            if converted_line[index]:
+                converted_line[index] += f" {token}"
+            else:
+                converted_line[index] = token
+
+        return converted_line
 
     # Create a CSV file from the transformed lines
     def create_csv(self, lines, file, index):
@@ -112,13 +115,19 @@ class Output_CRF:
         return ansi_colors.get(number)  # Return the corresponding ANSI color code for the given index
 
     # Print the output with the appropriate color coding for each token
-    def string_out(self, tuple_list):
+    def colored_prediction(self, tuple_list):
         line_out = ""  # Initialize an empty string
         for item in tuple_list:  # Loop through each tuple in the list
             color = self.get_ansi_color_code(item[2])  # Get the color code
             line_out += f" {color}{item[0]}\033[0m"  # Append token with color
         return f"[CRF-Result]: {line_out}"  # Return the formatted string
-
+    
+    def label_prediction(self, tuple_list):
+        line_out = ""  # Initialize an empty string
+        for item in tuple_list:  # Loop through each tuple in the list
+            line_out += f" {item[1]}"  # Append the predicted label
+        return f"[CRF-Labels]: {line_out}"  # Return the formatted string   
+    
     # Clean up the internal state of the object
     def clean(self):
         self.columns = []  # Reset columns

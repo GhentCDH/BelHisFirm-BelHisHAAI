@@ -20,7 +20,6 @@ class IndexParser:
         self.debug = debug  
         self.ocr_system = OCR()
         self.crf_predictor = Predict()
-        self.crf_predictor.choose_model(Path("/home/bas/Documents/Visual Code Repos/BelHisFirm-BelHisHAAI/src/index_parser/model/CRF_1884.pkg"))
     
     def run(self, folder_path, index_start_page=None, index_end_page=None):
  
