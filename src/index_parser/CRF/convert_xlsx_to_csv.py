@@ -22,8 +22,8 @@ def convert_xlsx_to_csv(xlsx_file, output_file=None, sheet_name=0):
 
 def main():
 
-    input_path = "/home/basvercru/Documents/Visual Code Workspaces/BelHisFirm/index_parser/CRF/BelHisFirm-GT/1913_GT_annotated.xlsx"
-    output_file = "/home/basvercru/Documents/Visual Code Workspaces/BelHisFirm/index_parser/CRF/BelHisFirm-GT/1913_GT_annotated.csv"
+    input_path = str(Path(__file__).parent / "BelHisFirm-GT" / "1913_GT_annotated.xlsx")
+    output_file = str(Path(__file__).parent / "BelHisFirm-GT" / "1913_GT_annotated.csv")
     
     convert_xlsx_to_csv(input_path, output_file)
 

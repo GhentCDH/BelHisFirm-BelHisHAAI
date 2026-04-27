@@ -1,6 +1,7 @@
 import os
 import pandas as pd
 import re
+from pathlib import Path
 
 def convert_to_valid_gt(path):
     all_words = []
@@ -23,7 +24,7 @@ def convert_to_valid_gt(path):
                     ids.append(counter)
                     counter += 1
     df = pd.DataFrame({'id': ids, 'value': all_words, 'key': None})
-    df.to_csv(r'ground_truth_1913.csv', index=False, decimal=';')
+    df.to_csv(Path(__file__).parent / 'BelHisFirm-GT' / 'ground_truth_1913.csv', index=False, decimal=';')
 
 def convert_to_valid_single(file_path):
     all_words = []
@@ -91,5 +92,5 @@ def update_keys_in_csv(csv_path):
         print(f"Updated and saved: {output_path}")
 
 if __name__ == "__main__":
-    convert_to_valid_single('/home/basvercru/Documents/Visual Code Workspaces/BelHisFirm/~output/CRF_Text.txt')
+    convert_to_valid_single(str(Path(__file__).parent.parent / 'output' / 'CRF_Text.txt'))
     #update_keys_in_csv('index_parser/CRF/BelHisFirm-GT/1897_GT.csv')

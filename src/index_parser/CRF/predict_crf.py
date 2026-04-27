@@ -11,12 +11,16 @@ class Predict:
 
     # Method to load the model from the file system
     def choose_model(self, modelname):
+        from pathlib import Path
+        path = Path(modelname)
+        if not path.exists():
+            print(f"[ERROR] Model file not found: {path.resolve()}")
+            return None
         try:
-            self.model = joblib.load(f'{modelname}')  # Attempt to load the model using joblib
-        except:
-            print("The model could not be found in the models directory. Make sure its name is spelled correctly and the .pkg extension is added!")
-            # If there's an error (e.g., model not found), print a helpful message.
-        return self.model  # Return the loaded model (None if not loaded)
+            self.model = joblib.load(path)
+        except Exception as e:
+            print(f"[ERROR] Failed to load model '{path.resolve()}': {e}")
+        return self.model
 
     # Method to predict labels for a given set of sentences (input data)
     def predict(self, source, file, index):

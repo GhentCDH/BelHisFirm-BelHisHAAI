@@ -1,16 +1,26 @@
-from PIL.Image import new
-from processing.text_extraction2 import TextExtractor2
-from processing.OCR2 import OCR
-from CRF.predict_crf import Predict
 import os
+import sys
+from pathlib import Path
 from tqdm import tqdm
+
+try:
+    from .processing.text_extraction2 import TextExtractor2
+    from .processing.OCR2 import OCR
+    from .CRF.predict_crf import Predict
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).parent))
+    from processing.text_extraction2 import TextExtractor2
+    from processing.OCR2 import OCR
+    from CRF.predict_crf import Predict
 
 
 class IndexParser:
     def __init__(self, debug=False):
         self.text_extractor = TextExtractor2(debug=debug)
+        self.debug = debug  
         self.ocr_system = OCR()
-        self.crf_predictor = Predict().choose_model("src/index_parser/model/CRF_1884.pkg")
+        self.crf_predictor = Predict()
+        self.crf_predictor.choose_model(Path("/home/bas/Documents/Visual Code Repos/BelHisFirm-BelHisHAAI/src/index_parser/model/CRF_1884.pkg"))
     
     def run(self, folder_path, index_start_page=None, index_end_page=None):
  
@@ -32,21 +42,12 @@ class IndexParser:
                 combined_lines.append(line[0])
 
         for line in combined_lines:
-           self.crf_predictor.predict(line, "output.xlsx",0)
-
-
-        
-
-        
-
-
-
-
-
+            result = self.crf_predictor.predict(combined_lines, "output", 0)
+        print(result)
 
 
 
 
 if __name__ == "__main__":
     parser = IndexParser(debug=True)
-    parser.run("src/index_parser/testdata")
+    parser.run(str(Path(__file__).parent / "testdata"))

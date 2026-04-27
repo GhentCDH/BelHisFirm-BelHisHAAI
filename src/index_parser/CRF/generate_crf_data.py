@@ -13,9 +13,10 @@ def main(image_path):
     # Initialize the OCR and TextExtraction classes
     ocr = OCR_Qwen()
     text_extraction = TextExtraction()
-    temp_path = Path("~temp")
-    output = Path("~output")
-    output_file = os.path.join(output, f"{image_path.split("/")[-1]}_ocr_results.txt")
+    _base = Path(__file__).parent.parent
+    temp_path = _base / "~temp"
+    output = _base / "output"
+    output_file = output / f"{Path(image_path).name}_ocr_results.txt"
 
     def create_temp_folder():
         if not temp_path.exists():
@@ -82,7 +83,7 @@ def main(image_path):
     
         
 if __name__ == "__main__":
-    input_path = "/home/basvercru/Documents/Visual Code Workspaces/BelHisFirm/index_parser/input"
+    input_path = Path(__file__).parent.parent / "input"
     for file in os.listdir(input_path):
         image_path = os.path.join(input_path, file)
         output_file = main(image_path)

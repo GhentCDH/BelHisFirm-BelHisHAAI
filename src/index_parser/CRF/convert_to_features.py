@@ -1,6 +1,7 @@
 import os
 import json
 from functools import partial
+from pathlib import Path
 
 # This class handles the conversion of strings to feature representations 
 # for training a CRF (Conditional Random Field) model.
@@ -131,7 +132,7 @@ class Convert_To_Features:
     @staticmethod
     # Check if the token corresponds to an event based on a predefined event list
     def __contains_event(token):
-        with open("index_parser/CRF/features/events.json", 'r') as file:
+        with open(Path(__file__).parent / "features" / "events.json", 'r') as file:
             event_map = json.load(file)  # Load the event map from a JSON file
         return token in event_map.values()  # Check if the token is in the event list
 

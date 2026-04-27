@@ -1,8 +1,12 @@
-from convert_to_features import Convert_To_Features
+try:
+    from .convert_to_features import Convert_To_Features
+except ImportError:
+    from convert_to_features import Convert_To_Features
 import sklearn_crfsuite
 import joblib
 import json
 import pandas as pd
+from pathlib import Path
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, accuracy_score
 from tqdm import tqdm
@@ -37,7 +41,7 @@ class Train:
         )
 
     def check_labels(self, csv_file):
-        with open('index_parser/CRF/labels/labels.json') as json_file:
+        with open(Path(__file__).parent / 'labels' / 'labels.json') as json_file:
             valid_labels = set(json.load(json_file).keys())
         data = pd.read_csv(csv_file)
         for row, label in enumerate(data['key'], start=2):
@@ -65,7 +69,7 @@ class Train:
         
         accuracy = accuracy_score(Y_Test_flat, Y_Pred_flat)
         
-        model_path = f'index_parser/model/{model_name}.pkg'
+        model_path = str(Path(__file__).parent.parent / 'model' / f'{model_name}.pkg')
         joblib.dump(self.model, model_path)
         print(f"\033[92m[SAVED]: \033[97mModel saved as {model_path}\033[97m")
         return accuracy

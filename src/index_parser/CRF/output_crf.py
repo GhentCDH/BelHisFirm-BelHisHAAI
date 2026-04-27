@@ -2,6 +2,11 @@ import os
 import json
 import pandas as pd
 import datetime
+from pathlib import Path
+
+_CRF_DIR = Path(__file__).parent
+_OUTPUT_DIR = _CRF_DIR.parent / 'output'
+_LABELS_FILE = _CRF_DIR / 'labels' / 'labels.json'
 
 # Class for outputting CRF results, either in CSV or Excel format, 
 # and handling various label transformations and color-coded printing.
@@ -15,13 +20,13 @@ class Output_CRF:
 
     # Check if the output directory exists, if not, create it
     def check_if_output_exists(self):
-        if not os.path.exists('src/index_parser/output/'):  # Check if the directory exists
-            os.mkdir('src/index_parser/output/')  # Create the directory if it doesn't exist
+        if not _OUTPUT_DIR.exists():
+            _OUTPUT_DIR.mkdir(parents=True)
 
     # Collect labels from a JSON file and store them in the object's attributes
     def collect_labels(self):
         # Open and read the JSON file that contains the label information
-        with open('src/index_parser/CRF/labels/labels.json') as json_file:
+        with open(_LABELS_FILE) as json_file:
             labels_json = json.load(json_file)  # Load the JSON data into a Python dictionary
             json_file.close()
         
@@ -56,7 +61,7 @@ class Output_CRF:
                 token = tuple_[0]  # Get the token
                 index = tuple_[2]  # Get the corresponding color index
                 if 0 <= index < len(converted_line):  # Ensure the index is valid
-                    if len(converted_line[index]) > 1:  # If there's already text at the index
+                    if converted_line[index] != "":  # If there's already text at the index
                         converted_line[index] = f'{converted_line[index]} {token}'  # Append the token
                     else:
                         converted_line[index] = token  # Otherwise, just set the token
@@ -70,7 +75,7 @@ class Output_CRF:
         df = pd.DataFrame(columns=self.columns)  # Create a new DataFrame with the appropriate columns
         for line in lines:
             df = pd.concat([df, pd.Series(line, index=df.columns)], ignore_index=True)  # Append each line to the DataFrame
-        df.to_csv(f'src/index_parser/output/{file}_{index}_{filename}.csv', index=False)  # Save the DataFrame to a CSV file
+        df.to_csv(_OUTPUT_DIR / f'{file}_{index}_{filename}.csv', index=False)
         self.clean()  # Clean up the attributes after saving the file
         self.clean()  # Clean up the attributes after saving the file
 
@@ -81,7 +86,7 @@ class Output_CRF:
         df = pd.DataFrame(columns=self.columns)  # Create a new DataFrame with the appropriate columns
         for line in lines:
             df = pd.concat([df, pd.DataFrame([line], columns=df.columns)], ignore_index=True)  # Append each line to the DataFrame
-        df.to_excel(f'src/index_parser/output/{file}_{index}_{filename}.xlsx', index=False)  # Save the DataFrame to an Excel file
+        df.to_excel(_OUTPUT_DIR / f'{file}_{index}_{filename}.xlsx', index=False)
         self.clean()  # Clean up the attributes after saving the file
 
     # Get the ANSI color code corresponding to a particular color index
