@@ -59,12 +59,7 @@ def _parse_label_response(text: str, expected: int) -> list[str] | None:
         return None
     return labels
 
-
 _BATCH_SIZE = 8
-
-
-_BATCH_SIZE = 8
-
 
 def annotate_with_llm(
     df: pd.DataFrame,
