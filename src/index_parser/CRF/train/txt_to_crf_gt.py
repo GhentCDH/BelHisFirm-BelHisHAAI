@@ -24,7 +24,7 @@ def convert_to_valid_gt(path):
                     ids.append(counter)
                     counter += 1
     df = pd.DataFrame({'id': ids, 'value': all_words, 'key': None})
-    df.to_csv(Path(__file__).parent / 'BelHisFirm-GT' / 'ground_truth_1913.csv', index=False, decimal=';')
+    df.to_csv(Path(__file__).parent.parent / 'BelHisFirm-GT' / 'ground_truth_1913.csv', index=False, decimal=';')
 
 def convert_to_valid_single(file_path):
     all_words = []
