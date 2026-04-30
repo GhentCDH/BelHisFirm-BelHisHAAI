@@ -23,10 +23,9 @@ class Train:
         data = data.astype(str)  # Convert all cells to string
         grouped_data = data.groupby('id')
         for _, group in tqdm(grouped_data, desc="\033[92m[LOADING]: \033[97mExtracting Ground Truth", ncols=100):
-            sentence = " ".join(group['value'].tolist())
+            tokens = group['value'].tolist()
             labels = group['key'].tolist()
-            tokens, labels = self.convert_to_features.tokenize_training_string(sentence, labels)
-            features = self.convert_to_features.get_token_features_from_tokenized_list(tokens)
+            features = Convert_To_Features.generate_token_features(tokens)
             self.training_data_token.append(features)
             self.training_data_label.append(labels)
 

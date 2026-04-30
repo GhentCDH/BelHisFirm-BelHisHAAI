@@ -64,7 +64,7 @@ class TrainModelGUI:
             c1_value = self.c1_entry.get()  # Get the c1 value
             c2_value = self.c2_entry.get()  # Get the c2 value
             max_iterations_value = self.max_iterations_entry.get()  # Get the max_iterations value
-            accuracy = trainer.train(path, model_name, c1_value, c2_value, max_iterations_value)  # Train the model
+            accuracy = trainer.train(path, model_name, float(c1_value), float(c2_value), int(max_iterations_value))  # Train the model
             # Show a message box with the training result
             messagebox.showinfo("Training", f"Training completed for model '{model_name}' with path: {path}\n"
                                             f"c1={c1_value}, c2={c2_value}, max_iterations={max_iterations_value}, accuracy={accuracy}")

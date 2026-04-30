@@ -4,5 +4,6 @@
     "N": "Name",
     "AD": "Addres",
     "EV": "Event",
-    "EX": "ExtraInformation"
+    "EX": "ExtraInformation",
+    "D": "Delimiter"
 }

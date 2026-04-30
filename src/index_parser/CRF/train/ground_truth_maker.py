@@ -17,23 +17,56 @@ _DELIMITERS = {".", ",", ";", ":", "!", "?", "(", ")", "°", "/", "&", '"', "—
 _VALID_LABELS = {"ID", "N", "AD", "EV", "EX"}
 _DEFAULT_MODEL = "Qwen/Qwen3-4B-Instruct-2507"
 
-_SYSTEM_PROMPT = """\
+_EVENTS_FILE = Path(__file__).parent.parent / "features" / "events.json"
+
+
+def _load_events() -> list[str]:
+    with open(_EVENTS_FILE, encoding="utf-8") as f:
+        return list(json.load(f).keys())
+
+
+_EVENTS = _load_events()
+_EVENTS_INLINE = ", ".join(_EVENTS)
+
+_SYSTEM_PROMPT = f"""\
 You are an expert annotator for a historical Belgian firms index (19th–early 20th century).
-Each entry records a firm's record number, name, location, and a business event.
+
+Each entry follows this fixed structure, however sometimes there are exceptions (left to right):
+  ID → Name → Location → Event → (optional) Extra information (which is always at the end of the entry, after the event.)
 
 Label definitions:
-- ID: Record identifier (always a number at the very start of an entry)
-- N: Firm or company name. "Id" or "Id." means ibidem (same firm as the previous entry) and must be labeled N
-- AD: Address or geographic location
-- EV: Business event or action (e.g. Constitution, Dissolution, Stichting, Ontbinding)
-- EX: Extra information that does not fit the other categories
+- ID: Record identifier — always a number at the very start of an entry. 
+- N: Firm or company name. "Id" or "Id." means ibidem (same firm as previous entry) and must be labeled N
+- AD: Address or geographic location (city, street, region, etc.)
+- EV: Business event or action. Known events: {_EVENTS_INLINE}. Label ALL tokens of multi-word events (e.g. every word of "Clôture de liquidation") as EV.
+- EX: Extra information that does not fit the categories above (dates, notary names, act numbers, etc.)
 
 You receive the full entry text as context and a JSON list of tokens to label.
 Delimiters and punctuation are already handled — label only the provided tokens.
 
-Reply ONLY with valid JSON on a single line: {"labels": ["LABEL1", "LABEL2", ...]}
+Reply ONLY with valid JSON on a single line: {{"labels": ["LABEL1", "LABEL2", ...]}}
 One label per token, same order, using only: ID, N, AD, EV, EX\
 """
+
+
+_FEW_SHOT_EXAMPLES = [
+    (
+        # Entry: 2163 . Koch et Reis , à Anvers . — Cession de part sociale .
+        "Entry: 2163 . Koch et Reis , à Anvers . — Cession de part sociale .\n\n"
+        "Tokens to label (10 tokens, one label per line number):\n"
+        "1: 2163\n2: Koch\n3: et\n4: Reis\n5: à\n6: Anvers\n7: Cession\n8: de\n9: part\n10: sociale\n\n"
+        "Respond with exactly 10 labels in order.",
+        '{"labels": ["ID", "N", "N", "N", "AD", "AD", "EV", "EX", "EX", "EX"]}',
+    ),
+    (
+        # Entry: 1859 . Horion et Vandervoort , à Bruxelles . — Dissolution .
+        "Entry: 1859 . Horion et Vandervoort , à Bruxelles . — Dissolution .\n\n"
+        "Tokens to label (7 tokens, one label per line number):\n"
+        "1: 1859\n2: Horion\n3: et\n4: Vandervoort\n5: à\n6: Bruxelles\n7: Dissolution\n\n"
+        "Respond with exactly 7 labels in order.",
+        '{"labels": ["ID", "N", "N", "N", "AD", "AD", "EV"]}',
+    ),
+]
 
 
 def _build_user_prompt(tokens_to_label: list[str], all_tokens: list[str]) -> str:
@@ -105,10 +138,11 @@ def annotate_with_llm(
         for sid, sent, unlabeled in batch:
             tokens_to_label = sent.loc[unlabeled, "value"].tolist()
             all_tokens = sent["value"].tolist()
-            messages = [
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": _build_user_prompt(tokens_to_label, all_tokens)},
-            ]
+            messages = [{"role": "system", "content": _SYSTEM_PROMPT}]
+            for ex_user, ex_assistant in _FEW_SHOT_EXAMPLES:
+                messages.append({"role": "user", "content": ex_user})
+                messages.append({"role": "assistant", "content": ex_assistant})
+            messages.append({"role": "user", "content": _build_user_prompt(tokens_to_label, all_tokens)})
             prompts.append(tokenizer.apply_chat_template(
                 messages, tokenize=False, add_generation_prompt=True,
             ))
@@ -208,6 +242,13 @@ def make_ground_truth(
     output_path = Path(output_path)
 
     if annotate:
+        import gc
+        import torch
+        del ocr_system
+        del text_extractor
+        gc.collect()
+        torch.cuda.empty_cache()
+
         log_path = output_path.with_name(output_path.stem + "_annotation_failures.log")
         df = annotate_with_llm(df, model_id=model_id, log_path=log_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -246,7 +287,4 @@ if __name__ == "__main__":
     )
 
 # Example usage:
-# uv run src/index_parser/CRF/train/ground_truth_maker.py \
-#   "/home/bas/Documents/Visual Code Repos/BelHisFirm-BelHisHAAI/src/index_parser/testdata/EHC_B665_O_2025_1892_III-IV_0926.tif" \
-#   --exclude "TABLE DU RECUEIL" --exclude "N° d'ordre" --exclude-whole "d'acte" \
-#   --annotate
+# uv run src/index_parser/CRF/train/ground_truth_maker.py "/home/bas/Documents/Visual Code Repos/BelHisFirm-BelHisHAAI/src/index_parser/testdata/EHC_B665_O_2025_1892_III-IV_0926.tif" --exclude "TABLE DU RECUEIL" --exclude "N° d'ordre" --exclude-whole "de l'acte" --annotate
