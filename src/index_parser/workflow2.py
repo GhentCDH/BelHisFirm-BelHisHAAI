@@ -32,8 +32,8 @@ _IMAGE_SCALE = 0.25
 class IndexParser:
     _DEFAULT_MODEL = str(Path(__file__).parent / "model" / "1892-V4.pkg")
 
-    def __init__(self, model_path=None, debug_mode=None):
-        self.text_extractor = TextExtractor2(debug=(debug_mode == "bbox"))
+    def __init__(self, model_path=None, debug_mode=None, binarize=False):
+        self.text_extractor = TextExtractor2(debug=(debug_mode == "bbox"), binarize=binarize)
         self.debug_mode = debug_mode
         self.ocr_system = OCR()
         self.crf_predictor = Predict(model_path or self._DEFAULT_MODEL)
@@ -75,6 +75,8 @@ class IndexParser:
                 ocr_result = self.ocr_system.run(text)
                 if self.debug_mode == "ocr":
                     print(f"[OCR] {ocr_result}")
+
+                ocr_result = self.crf_preprocessor.clean_before_merge(ocr_result)
 
                 parts = [p.strip() for p in re.split(r'\r\n|\r|\n', ocr_result) if p.strip()]
                 if len(parts) > 1:
@@ -143,9 +145,10 @@ if __name__ == "__main__":
     arg_parser.add_argument("--end-page", type=int, default=None, help="Last page to process (1-based, inclusive)")
     arg_parser.add_argument("--model", type=str, default=None, help="Path to CRF model file")
     arg_parser.add_argument("--output", type=str, default=None, help="Base output folder (default: output/ next to this script)")
+    arg_parser.add_argument("--binarize", action="store_true", help="Convert line crops to black-and-white using Otsu thresholding before OCR")
     arg_parser.add_argument("--debug", choices=["bbox", "ocr", "crf"], default=None,
                             help="bbox: save bbox images only; ocr: print OCR output, skip CRF; crf: run all, show CRF in terminal")
     args = arg_parser.parse_args()
 
-    index_parser = IndexParser(model_path=args.model, debug_mode=args.debug)
+    index_parser = IndexParser(model_path=args.model, debug_mode=args.debug, binarize=args.binarize)
     index_parser.run(args.folder, index_start_page=args.start_page, index_end_page=args.end_page, output_dir=args.output)

@@ -7,9 +7,10 @@ from sklearn.cluster import DBSCAN
 from pathlib import Path
 
 class TextExtractor2:
-    def __init__(self, debug=False, device="cuda"):
+    def __init__(self, debug=False, device="cuda", binarize=False):
         self.lym = DetectionPredictor(device=device)
         self.debug = debug
+        self.binarize = binarize
 
     def _straighten(self, pil_image):
         gray = np.array(pil_image.convert("L"))
@@ -35,10 +36,15 @@ class TextExtractor2:
         rotated = cv2.warpAffine(np.array(pil_image), M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
         return Image.fromarray(rotated)
 
+    def _binarize(self, pil_image):
+        gray = np.array(pil_image.convert("L"))
+        _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        return Image.fromarray(binary)
+
     def extract_text_lines(self, image_path, debug_dir=None):
         with Image.open(image_path) as pil_image:
             source_image = self._straighten(pil_image.copy())
-            detection_image = source_image.convert("RGB")
+            detection_image = self._binarize(source_image).convert("RGB") if self.binarize else source_image.convert("RGB")
         w, h = source_image.size
 
         # surya lay out predictions
@@ -105,14 +111,37 @@ class TextExtractor2:
             else:
                 heading_boxes.append(box)
 
-        def detect_x_outliers_dbscan(boxes, eps_ratio=0.005, min_samples=5):
+        def detect_x_outliers_dbscan(boxes, eps_ratio=0.02, min_samples=5):
             if len(boxes) < min_samples:
                 return [], []
 
-            x_values = np.array([[float(box.bbox[0])] for box in boxes])
+            x_values = np.array([float(box.bbox[0]) for box in boxes])
             eps = max(5.0, w * eps_ratio)
-            labels = DBSCAN(eps=eps, min_samples=min_samples).fit_predict(x_values)
-            outlier_indices = [idx for idx, label in enumerate(labels) if label == -1]
+            labels = DBSCAN(eps=eps, min_samples=min_samples).fit_predict(x_values.reshape(-1, 1))
+
+            unique_labels = set(labels) - {-1}
+
+            if not unique_labels:
+                if self.debug:
+                    print(f"[DBSCAN] eps={eps:.1f} | all {len(boxes)} points are noise → all marked as outliers")
+                return list(range(len(boxes))), labels.tolist()
+
+            # Leftmost cluster by mean x1 is the base indentation level
+            cluster_centers = {lbl: float(np.mean(x_values[labels == lbl])) for lbl in unique_labels}
+            base_label = min(cluster_centers, key=cluster_centers.get)
+
+            # Outlier = DBSCAN noise OR any cluster that is not the base
+            outlier_indices = [idx for idx, lbl in enumerate(labels) if lbl != base_label]
+
+            if self.debug:
+                cluster_counts = {lbl: int(np.sum(labels == lbl)) for lbl in unique_labels}
+                print(f"[DBSCAN] eps={eps:.1f}")
+                for lbl in sorted(unique_labels):
+                    marker = " ← base" if lbl == base_label else ""
+                    print(f"         cluster {lbl}: center={cluster_centers[lbl]:.1f}  n={cluster_counts[lbl]}{marker}")
+                print(f"         noise points: {int(np.sum(labels == -1))}")
+                print(f"         outliers (non-base): {len(outlier_indices)} / {len(boxes)}")
+
             return outlier_indices, labels.tolist()
 
         def bboxes_from_indices(boxes, indices):
