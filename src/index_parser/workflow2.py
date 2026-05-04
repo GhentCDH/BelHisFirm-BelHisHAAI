@@ -26,15 +26,16 @@ except ImportError:
     from CRF.predict_crf import Predict
 
 _OUTPUT_BASE_DIR = Path(__file__).parent / "output"
-_IMAGE_SCALE = 0.25
+_IMAGE_SCALE = 0.50
 
 
 class IndexParser:
     _DEFAULT_MODEL = str(Path(__file__).parent / "model" / "1892-V4.pkg")
 
-    def __init__(self, model_path=None, debug_mode=None, binarize=False):
+    def __init__(self, model_path=None, debug_mode=None, binarize=False, explain=False):
         self.text_extractor = TextExtractor2(debug=(debug_mode == "bbox"), binarize=binarize)
         self.debug_mode = debug_mode
+        self.explain = explain
         self.ocr_system = OCR()
         self.crf_predictor = Predict(model_path or self._DEFAULT_MODEL)
         self.postprocessor = OCRPostProcessor()
@@ -134,7 +135,7 @@ class IndexParser:
 
         output_path = output_dir / filename
         df.to_excel(output_path, index=False)
-        self.excel_formatter.format(output_path)
+        self.excel_formatter.format(output_path, explain=self.explain)
         print(f"[Output] Saved {len(rows)} records to {output_path}")
 
 
@@ -148,7 +149,9 @@ if __name__ == "__main__":
     arg_parser.add_argument("--binarize", action="store_true", help="Convert line crops to black-and-white using Otsu thresholding before OCR")
     arg_parser.add_argument("--debug", choices=["bbox", "ocr", "crf"], default=None,
                             help="bbox: save bbox images only; ocr: print OCR output, skip CRF; crf: run all, show CRF in terminal")
+    arg_parser.add_argument("--explain", action="store_true",
+                            help="Write a per-image <stem>_explain.txt log with the exact reason each row was colored")
     args = arg_parser.parse_args()
 
-    index_parser = IndexParser(model_path=args.model, debug_mode=args.debug, binarize=args.binarize)
+    index_parser = IndexParser(model_path=args.model, debug_mode=args.debug, binarize=args.binarize, explain=args.explain)
     index_parser.run(args.folder, index_start_page=args.start_page, index_end_page=args.end_page, output_dir=args.output)

@@ -111,7 +111,7 @@ class TextExtractor2:
             else:
                 heading_boxes.append(box)
 
-        def detect_x_outliers_dbscan(boxes, eps_ratio=0.02, min_samples=5):
+        def detect_x_outliers_dbscan(boxes, side="?", eps_ratio=0.007, min_samples=2):
             if len(boxes) < min_samples:
                 return [], []
 
@@ -123,32 +123,42 @@ class TextExtractor2:
 
             if not unique_labels:
                 if self.debug:
-                    print(f"[DBSCAN] eps={eps:.1f} | all {len(boxes)} points are noise → all marked as outliers")
+                    print(f"[DBSCAN:{side}] eps={eps:.1f}  eps_ratio={eps_ratio}  min_samples={min_samples}")
+                    print(f"         all {len(boxes)} points are noise → all marked as outliers")
                 return list(range(len(boxes))), labels.tolist()
 
-            # Leftmost cluster by mean x1 is the base indentation level
-            cluster_centers = {lbl: float(np.mean(x_values[labels == lbl])) for lbl in unique_labels}
-            base_label = min(cluster_centers, key=cluster_centers.get)
+            cluster_medians = {lbl: float(np.median(x_values[labels == lbl])) for lbl in unique_labels}
 
-            # Outlier = DBSCAN noise OR any cluster that is not the base
-            outlier_indices = [idx for idx, lbl in enumerate(labels) if lbl != base_label]
+            # Rightmost cluster is the indentation/outlier cluster; all others are normal.
+            # When only one cluster exists it is treated as normal (only noise is outlier).
+            if len(unique_labels) > 1:
+                outlier_label = max(cluster_medians, key=cluster_medians.get)
+            else:
+                outlier_label = None  # single cluster → no cluster is an outlier
+
+            outlier_indices = [
+                idx for idx, lbl in enumerate(labels)
+                if lbl == -1 or lbl == outlier_label
+            ]
+            normal_count = len(boxes) - len(outlier_indices)
 
             if self.debug:
                 cluster_counts = {lbl: int(np.sum(labels == lbl)) for lbl in unique_labels}
-                print(f"[DBSCAN] eps={eps:.1f}")
+                print(f"[DBSCAN:{side}] eps={eps:.1f}  eps_ratio={eps_ratio}  min_samples={min_samples}")
                 for lbl in sorted(unique_labels):
-                    marker = " ← base" if lbl == base_label else ""
-                    print(f"         cluster {lbl}: center={cluster_centers[lbl]:.1f}  n={cluster_counts[lbl]}{marker}")
-                print(f"         noise points: {int(np.sum(labels == -1))}")
-                print(f"         outliers (non-base): {len(outlier_indices)} / {len(boxes)}")
+                    marker = " ← outlier (rightmost)" if lbl == outlier_label else " ← normal"
+                    print(f"         cluster {lbl}: median_x1={cluster_medians[lbl]:.1f}  n={cluster_counts[lbl]}{marker}")
+                print(f"         noise points  : {int(np.sum(labels == -1))}")
+                print(f"         normal        : {normal_count}")
+                print(f"         outliers      : {len(outlier_indices)} / {len(boxes)}")
 
             return outlier_indices, labels.tolist()
 
         def bboxes_from_indices(boxes, indices):
             return [boxes[idx] for idx in indices]
 
-        left_outlier_indices, left_cluster_labels = detect_x_outliers_dbscan(left_boxes)
-        right_outlier_indices, right_cluster_labels = detect_x_outliers_dbscan(right_boxes)
+        left_outlier_indices, left_cluster_labels = detect_x_outliers_dbscan(left_boxes, side="left")
+        right_outlier_indices, right_cluster_labels = detect_x_outliers_dbscan(right_boxes, side="right")
 
         left_outliers = bboxes_from_indices(left_boxes, left_outlier_indices)
         right_outliers = bboxes_from_indices(right_boxes, right_outlier_indices)
