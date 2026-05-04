@@ -39,7 +39,7 @@ Label definitions:
 - N: Firm or company name. "Id" or "Id." means ibidem (same firm as previous entry) and must be labeled N
 - AD: Address or geographic location (city, street, region, etc.)
 - EV: Business event or action. Known events: {_EVENTS_INLINE}. Label ALL tokens of multi-word events (e.g. every word of "Clôture de liquidation") as EV.
-- EX: Extra information that does not fit the categories above (dates, notary names, act numbers, etc.)
+- EX: Extra information that does not fit the categories above (dates, notary names, act numbers, etc.). This is rare. If it can be attributed to a known event, label it as EV. Otherwise, label it as EX.
 
 You receive the full entry text as context and a JSON list of tokens to label.
 Delimiters and punctuation are already handled — label only the provided tokens.
@@ -61,11 +61,17 @@ _FEW_SHOT_EXAMPLES = [
     (
         # Entry: 1859 . Horion et Vandervoort , à Bruxelles . — Dissolution .
         "Entry: 1859 . Horion et Vandervoort , à Bruxelles . — Dissolution .\n\n"
-        "Tokens to label (7 tokens, one label per line number):\n"
         "1: 1859\n2: Horion\n3: et\n4: Vandervoort\n5: à\n6: Bruxelles\n7: Dissolution\n\n"
         "Respond with exactly 7 labels in order.",
         '{"labels": ["ID", "N", "N", "N", "AD", "AD", "EV"]}',
     ),
+    (
+        # [CRF-Result]:  2948 . Matthieu et fils , à Bruxelles . — Clôture de liquidation .
+        "Entry: 2948 . Matthieu et fils , à Bruxelles . — Clôture de liquidation .\n\n"
+        "1: 2948\n2: Matthieu\n3: et\n4: fils\n5: à\n6: Bruxelles\n7: Clôture\n8: de\n9: liquidation\n\n"
+        "Respond with exactly 9 labels in order.",
+        '{"labels": ["ID", "N", "N", "N", "AD", "AD", "EV", "EV", "EV"]}',
+    )
 ]
 
 

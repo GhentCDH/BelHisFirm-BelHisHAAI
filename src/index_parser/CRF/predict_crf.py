@@ -1,4 +1,3 @@
-from openpyxl.styles.builtins import output
 import joblib
 from pathlib import Path
 import datetime
@@ -24,12 +23,12 @@ class Predict:
         # Load CRF model
         path = Path(model_path)
         if not path.exists():
-            print(f"[ERROR] Conditional Random Fields Model (CRF) file not found. Please make sure to select a valid model file: {path.resolve()}")
-            return None
+            print(f"[ERROR] CRF model file not found: {path.resolve()}")
+            return
         try:
             self.model = joblib.load(path)
         except Exception as e:
-            print(f"[ERROR] Failed to load Conditional Random Fields Model (CRF) model '{path.resolve()}': {e}")
+            print(f"[ERROR] Failed to load CRF model '{path.resolve()}': {e}")
 
 
     # Method to predict labels for a given set of sentences (input data)
@@ -55,6 +54,9 @@ class Predict:
                 print(output_string)
                 print(output_string_labels)
     
+    def reset(self):
+        self.output_lines = []
+
     def get_output_no_punctuation(self):
         list_with_converted_lines = []
 

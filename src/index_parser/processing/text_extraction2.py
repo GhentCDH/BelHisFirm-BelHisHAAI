@@ -4,19 +4,41 @@ from PIL import Image
 from surya.detection import DetectionPredictor
 import matplotlib.pyplot as plt
 from sklearn.cluster import DBSCAN
-
-IMAGE_PATH = "EHC_B665_O_2025_1892_III-IV_0926.tif"
-
+from pathlib import Path
 
 class TextExtractor2:
     def __init__(self, debug=False, device="cuda"):
         self.lym = DetectionPredictor(device=device)
         self.debug = debug
 
-    def extract_text_lines(self, image_path):
+    def _straighten(self, pil_image):
+        gray = np.array(pil_image.convert("L"))
+        edges = cv2.Canny(gray, 50, 150, apertureSize=3)
+        lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=100, minLineLength=100, maxLineGap=10)
+
+        if lines is None:
+            return pil_image
+
+        all_angles = [np.degrees(np.arctan2(y2 - y1, x2 - x1)) for x1, y1, x2, y2 in (l[0] for l in lines)]
+        # Keep only near-horizontal lines — verticals (borders, margins) corrupt the median
+        angles = [a for a in all_angles if abs(a) < 45]
+        if not angles:
+            return pil_image
+
+        median_angle = np.median(angles)
+
+        if abs(median_angle) > 20:
+            return pil_image
+
+        h, w = gray.shape
+        M = cv2.getRotationMatrix2D((w // 2, h // 2), median_angle, 1.0)
+        rotated = cv2.warpAffine(np.array(pil_image), M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+        return Image.fromarray(rotated)
+
+    def extract_text_lines(self, image_path, debug_dir=None):
         with Image.open(image_path) as pil_image:
-            source_image = pil_image.copy()
-            detection_image = pil_image.convert("RGB")
+            source_image = self._straighten(pil_image.copy())
+            detection_image = source_image.convert("RGB")
         w, h = source_image.size
 
         # surya lay out predictions
@@ -43,19 +65,45 @@ class TextExtractor2:
                 dist_to_line2 = abs(box_center - linepos2)
                 return "left" if dist_to_line1 <= dist_to_line2 else "right"
             
+        def merge_overlapping_boxes(boxes, iou_threshold=0.05):
+            if not boxes:
+                return []
+
+            class _Box:
+                def __init__(self, bbox):
+                    self.bbox = bbox
+
+            sorted_by_pos = sorted(boxes, key=lambda b: (b.bbox[1], b.bbox[0]))
+            current = list(sorted_by_pos[0].bbox)
+
+            merged = []
+            for box in sorted_by_pos[1:]:
+                x1, y1, x2, y2 = box.bbox
+                cx1, cy1, cx2, cy2 = current
+                inter = max(0, min(x2, cx2) - max(x1, cx1)) * max(0, min(y2, cy2) - max(y1, cy1))
+                union = (x2 - x1) * (y2 - y1) + (cx2 - cx1) * (cy2 - cy1) - inter
+                if union > 0 and inter / union > iou_threshold:
+                    current = [min(cx1, x1), min(cy1, y1), max(cx2, x2), max(cy2, y2)]
+                else:
+                    merged.append(_Box(tuple(current)))
+                    current = [x1, y1, x2, y2]
+            merged.append(_Box(tuple(current)))
+            return merged
+
+        page_prediction = predictions[0] if predictions else None
+        all_boxes = merge_overlapping_boxes(page_prediction.bboxes) if page_prediction else []
+
         left_boxes = []
         right_boxes = []
         heading_boxes = []
-        page_prediction = predictions[0] if predictions else None
-        if page_prediction is not None:
-            for box in page_prediction.bboxes:
-                side = assign_side(box)
-                if side == "left":
-                    left_boxes.append(box)
-                elif side == "right":
-                    right_boxes.append(box)
-                else:
-                    heading_boxes.append(box)
+        for box in all_boxes:
+            side = assign_side(box)
+            if side == "left":
+                left_boxes.append(box)
+            elif side == "right":
+                right_boxes.append(box)
+            else:
+                heading_boxes.append(box)
 
         def detect_x_outliers_dbscan(boxes, eps_ratio=0.005, min_samples=5):
             if len(boxes) < min_samples:
@@ -89,8 +137,8 @@ class TextExtractor2:
             return sorted(boxes, key=sort_key)
 
         line_crops_with_outlier = []
-        if page_prediction is not None:
-            sorted_boxes = sort_boxes_by_side(page_prediction.bboxes)
+        if all_boxes:
+            sorted_boxes = sort_boxes_by_side(all_boxes)
             for box in sorted_boxes:
                 x1, y1, x2, y2 = map(int, box.bbox)
                 x1 = max(0, min(x1, w - 1))
@@ -98,13 +146,13 @@ class TextExtractor2:
                 x2 = max(x1 + 1, min(x2, w))
                 y2 = max(y1 + 1, min(y2, h))
 
-                cropped_line = source_image.crop((x1, y1, x2, y2))
                 side = assign_side(box)
-                is_outlier = False
-                if side == "left":
-                    is_outlier = id(box) in left_outlier_ids
-                elif side == "right":
-                    is_outlier = id(box) in right_outlier_ids
+                if side == "heading":
+                    continue
+
+                cropped_line = source_image.crop((x1, y1, x2, y2))
+                is_outlier = (side == "left" and id(box) in left_outlier_ids) or \
+                             (side == "right" and id(box) in right_outlier_ids)
 
                 line_crops_with_outlier.append((cropped_line, is_outlier))
 
@@ -131,15 +179,18 @@ class TextExtractor2:
             plt.grid(True, alpha=0.3)
             plt.legend(loc="best")
 
-            output_file = f"debug_{side_name}_x1_&_y1.png"
+            stem = Path(image_path).stem
+            out_dir = Path(debug_dir) if debug_dir else Path(".")
+            output_file = out_dir / f"{stem}_debug_{side_name}_x1_y1.png"
             plt.savefig(output_file, dpi=150, bbox_inches="tight")
             plt.close()
             return output_file
 
         # This is for debugging
         if self.debug:
+            stem = Path(image_path).stem
+            out_dir = Path(debug_dir) if debug_dir else Path(".")
 
-            # Show the image with lines and boxes
             cv_image = cv2.cvtColor(np.array(detection_image), cv2.COLOR_RGB2BGR)
 
             cv2.line(cv_image, (linepos1, 0), (linepos1, h), (0, 255, 255), 3)
@@ -157,8 +208,7 @@ class TextExtractor2:
                 x1, y1, x2, y2 = map(int, box.bbox)
                 cv2.rectangle(cv_image, (x1, y1), (x2, y2), (255, 0, 0), 2)
 
-            output_path = "debug_page_thirds.png"
-            cv2.imwrite(output_path, cv_image)
+            cv2.imwrite(str(out_dir / f"{stem}_debug_bbox.png"), cv_image)
 
             side_plots = {
                 "left": save_side_plot(left_boxes, "left", "green", left_outlier_indices),
@@ -172,8 +222,9 @@ class TextExtractor2:
 
 
 if __name__ == "__main__":
+    image_path = "EHC_B665_O_2025_1892_III-IV_0926.tif"
     extractor = TextExtractor2(debug=False)
-    result = extractor.extract_text_lines(IMAGE_PATH)
+    result = extractor.extract_text_lines(image_path)
 
 
 

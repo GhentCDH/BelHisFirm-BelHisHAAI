@@ -19,7 +19,7 @@ class OCR:
                         "type": "image",
                         "image": image,
                     },
-                    {"type": "text", "text": "Transcribe this text. Only output the text, without any additional explanation."},
+                    {"type": "text", "text": "Transcribe this textline. Only output the focused text lines, without any additional explanation. Ignore artefacts. Cleary seperate lines with \n"},
                 ],
             }
         ]
@@ -35,7 +35,7 @@ class OCR:
         inputs = inputs.to(self.model.device)
 
         # Inference: Generation of the output
-        generated_ids = self.model.generate(**inputs, max_new_tokens=512)
+        generated_ids = self.model.generate(**inputs, max_new_tokens=128)
         generated_ids_trimmed = [
             out_ids[len(in_ids) :] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
         ]
