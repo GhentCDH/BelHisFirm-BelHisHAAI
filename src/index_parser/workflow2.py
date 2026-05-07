@@ -1,4 +1,5 @@
 import argparse
+import logging
 import re
 import sys
 import datetime
@@ -6,6 +7,21 @@ import pandas as pd
 from pathlib import Path
 from PIL import Image
 from tqdm import tqdm
+
+_log = logging.getLogger("index_parser")
+
+# find ./ -maxdepth 3 -name "1889"
+
+def _setup_log(output_dir):
+    _log.setLevel(logging.INFO)
+    _log.propagate = False
+    fmt = logging.Formatter("%(asctime)s  %(levelname)-8s  %(message)s", datefmt="%H:%M:%S")
+    fh = logging.FileHandler(output_dir / "processing.log", encoding="utf-8")
+    fh.setFormatter(fmt)
+    _log.addHandler(fh)
+    ch = logging.StreamHandler()
+    ch.setFormatter(fmt)
+    _log.addHandler(ch)
 
 try:
     from .processing.text_extraction2 import TextExtractor2
@@ -29,13 +45,36 @@ _OUTPUT_BASE_DIR = Path(__file__).parent / "output"
 _IMAGE_SCALE = 0.50
 
 
-class IndexParser:
-    _DEFAULT_MODEL = str(Path(__file__).parent / "model" / "1892-V4.pkg")
+def _is_digits_only(text):
+    cleaned = re.sub(r'[\s.,]', '', text.strip())
+    return bool(cleaned) and cleaned.isdigit()
 
-    def __init__(self, model_path=None, debug_mode=None, binarize=False, explain=False):
+
+def _is_capitals_only(text):
+    letters = re.sub(r'[\d\s.,]', '', text.strip())
+    return bool(letters) and letters.isupper()
+
+
+class _PageLogHandler(logging.Handler):
+    """Captures log records for a single page so they can be written to _explain.txt."""
+    def __init__(self):
+        super().__init__()
+        self.messages = []
+        self.setFormatter(logging.Formatter("%(message)s"))
+
+    def emit(self, record):
+        self.messages.append(self.format(record))
+
+    def clear(self):
+        self.messages.clear()
+
+
+class IndexParser:
+    _DEFAULT_MODEL = str(Path(__file__).parent / "model" / "1892-V5.pkg")
+
+    def __init__(self, model_path=None, debug_mode=None, binarize=False):
         self.text_extractor = TextExtractor2(debug=(debug_mode == "bbox"), binarize=binarize)
         self.debug_mode = debug_mode
-        self.explain = explain
         self.ocr_system = OCR()
         self.crf_predictor = Predict(model_path or self._DEFAULT_MODEL)
         self.postprocessor = OCRPostProcessor()
@@ -47,6 +86,9 @@ class IndexParser:
         timestamp = datetime.datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
         output_dir = Path(output_dir) / timestamp if output_dir else _OUTPUT_BASE_DIR / timestamp
         output_dir.mkdir(parents=True, exist_ok=True)
+        _setup_log(output_dir)
+        page_log = _PageLogHandler()
+        _log.addHandler(page_log)
 
         folder = Path(folder_path)
         selected = []
@@ -60,10 +102,11 @@ class IndexParser:
             selected.append(image_path)
 
         if not selected:
-            print("[Warning] No images matched the given page range.")
+            _log.warning("Geen afbeeldingen gevonden voor het opgegeven paginabereik.")
             return
 
         for image_path in selected:
+            page_log.clear()
             self._save_thumbnail(image_path, output_dir / image_path.name)
 
             extracted = self.text_extractor.extract_text_lines(image_path, debug_dir=output_dir)
@@ -81,10 +124,16 @@ class IndexParser:
 
                 parts = [p.strip() for p in re.split(r'\r\n|\r|\n', ocr_result) if p.strip()]
                 if len(parts) > 1:
-                    print(f"[Warning] OCR produced {len(parts)} lines in one detection on {image_path.name}, splitting")
+                    _log.warning(f"OCR detecteerde {len(parts)} regels in één bounding box in {image_path.name} — splitsen")
 
                 for i, part in enumerate(parts):
-                    if i == 0 and is_continuation and page_lines:
+                    if _is_digits_only(part):
+                        _log.warning(f"Regel bevat alleen cijfers, overgeslagen in {image_path.name}: '{part[:60]}'")
+                        continue
+                    elif _is_capitals_only(part):
+                        _log.warning(f"Regel bevat alleen hoofdletters, overgeslagen in {image_path.name}: '{part[:60]}'")
+                        continue
+                    elif i == 0 and is_continuation and page_lines:
                         page_lines[-1] = self.postprocessor.combine(page_lines[-1], part)
                     else:
                         page_lines.append(part)
@@ -95,7 +144,7 @@ class IndexParser:
             deduped = []
             for line in page_lines:
                 if line in seen:
-                    print(f"[Warning] Duplicate line removed on {image_path.name}: '{line[:60]}'")
+                    _log.warning(f"Dubbele regel verwijderd in {image_path.name}: '{line[:60]}'")
                 else:
                     seen.add(line)
                     deduped.append(line)
@@ -111,7 +160,8 @@ class IndexParser:
                 self.crf_predictor.predict_single_line(line, debug=(self.debug_mode == "crf"))
                 predicted_texts.append(line)
 
-            self._save_excel(predicted_texts, output_dir, image_path.stem + ".xlsx")
+            self._save_excel(predicted_texts, output_dir, image_path.stem + ".xlsx",
+                             processing_log=page_log.messages.copy())
             self.crf_predictor.reset()
 
     def _save_thumbnail(self, src_path, dest_path):
@@ -120,7 +170,7 @@ class IndexParser:
         img = img.resize((int(w * _IMAGE_SCALE), int(h * _IMAGE_SCALE)), Image.LANCZOS)
         img.save(dest_path)
 
-    def _save_excel(self, predicted_texts, output_dir, filename):
+    def _save_excel(self, predicted_texts, output_dir, filename, processing_log=None):
         crf_rows = self.crf_predictor.get_output_no_punctuation()
         columns = self.crf_predictor.output.columns
 
@@ -135,8 +185,8 @@ class IndexParser:
 
         output_path = output_dir / filename
         df.to_excel(output_path, index=False)
-        self.excel_formatter.format(output_path, explain=self.explain)
-        print(f"[Output] Saved {len(rows)} records to {output_path}")
+        self.excel_formatter.format(output_path, processing_log=processing_log)
+        _log.info(f"{len(rows)} regels opgeslagen naar {output_path}")
 
 
 if __name__ == "__main__":
@@ -149,9 +199,7 @@ if __name__ == "__main__":
     arg_parser.add_argument("--binarize", action="store_true", help="Convert line crops to black-and-white using Otsu thresholding before OCR")
     arg_parser.add_argument("--debug", choices=["bbox", "ocr", "crf"], default=None,
                             help="bbox: save bbox images only; ocr: print OCR output, skip CRF; crf: run all, show CRF in terminal")
-    arg_parser.add_argument("--explain", action="store_true",
-                            help="Write a per-image <stem>_explain.txt log with the exact reason each row was colored")
     args = arg_parser.parse_args()
 
-    index_parser = IndexParser(model_path=args.model, debug_mode=args.debug, binarize=args.binarize, explain=args.explain)
+    index_parser = IndexParser(model_path=args.model, debug_mode=args.debug, binarize=args.binarize)
     index_parser.run(args.folder, index_start_page=args.start_page, index_end_page=args.end_page, output_dir=args.output)

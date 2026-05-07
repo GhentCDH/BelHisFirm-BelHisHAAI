@@ -71,7 +71,23 @@ _FEW_SHOT_EXAMPLES = [
         "1: 2948\n2: Matthieu\n3: et\n4: fils\n5: à\n6: Bruxelles\n7: Clôture\n8: de\n9: liquidation\n\n"
         "Respond with exactly 9 labels in order.",
         '{"labels": ["ID", "N", "N", "N", "AD", "AD", "EV", "EV", "EV"]}',
-    )
+    ),
+    (
+        # Entry: 2513 . Tramways de Nice ( Société nouvelle des ) , à Bruxelles . — Bilan et compte de profits et pertes au 31 août 1888 .
+        "Entry: 2513 . Tramways de Nice ( Société nouvelle des ) , à Bruxelles . — Bilan et compte de profits et pertes au 31 août 1888 .\n\n"
+        "Tokens to label (20 tokens, one label per line number):\n"
+        "1: 2513\n2: Tramways\n3: de\n4: Nice\n5: Société\n6: nouvelle\n7: des\n8: à\n9: Bruxelles\n10: Bilan\n11: et\n12: compte\n13: de\n14: profits\n15: et\n16: pertes\n17: au\n18: 31\n19: août\n20: 1888\n\n"
+        "Respond with exactly 20 labels in order.",
+        '{"labels": ["ID", "N", "N", "N", "N", "N", "N", "AD", "AD", "EV", "EV", "EV", "EV", "EV", "EV", "EV", "EV", "EV", "EV", "EV"]}',
+    ),
+    (
+        # Entry: 775 . Tramways de Prague , à Bruxelles . — Bilan et compte de profits et pertes au 31 décembre 1887 .
+        "Entry: 775 . Tramways de Prague , à Bruxelles . — Bilan et compte de profits et pertes au 31 décembre 1887 .\n\n"
+        "Tokens to label (17 tokens, one label per line number):\n"
+        "1: 775\n2: Tramways\n3: de\n4: Prague\n5: à\n6: Bruxelles\n7: Bilan\n8: et\n9: compte\n10: de\n11: profits\n12: et\n13: pertes\n14: au\n15: 31\n16: décembre\n17: 1887\n\n"
+        "Respond with exactly 17 labels in order.",
+        '{"labels": ["ID", "N", "N", "N", "AD", "AD", "EV", "EV", "EV", "EV", "EV", "EV", "EV", "EV", "EV", "EV", "EV"]}',
+    ),
 ]
 
 
@@ -293,4 +309,4 @@ if __name__ == "__main__":
     )
 
 # Example usage:
-# uv run src/index_parser/CRF/train/ground_truth_maker.py "/home/bas/Documents/Visual Code Repos/BelHisFirm-BelHisHAAI/src/index_parser/testdata/EHC_B665_O_2025_1892_III-IV_0926.tif" --exclude "TABLE DU RECUEIL" --exclude "N° d'ordre" --exclude-whole "de l'acte" --annotate
+# uv run src/index_parser/CRF/train/ground_truth_maker.py "/mnt/UGent_Share/ghentcdh_belhisfirm/EHC_B665_O/20251127/TIF/1888/EHC_B665_O_2025_1888_1672.tif" --exclude "TABLE DU RECUEIL" --exclude "N° d'ordre" --exclude-whole "de l'acte" --annotate

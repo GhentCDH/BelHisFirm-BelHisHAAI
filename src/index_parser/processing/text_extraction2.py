@@ -1,3 +1,4 @@
+import logging
 import cv2
 import numpy as np
 from PIL import Image
@@ -5,6 +6,8 @@ from surya.detection import DetectionPredictor
 import matplotlib.pyplot as plt
 from sklearn.cluster import DBSCAN
 from pathlib import Path
+
+_log = logging.getLogger("index_parser")
 
 class TextExtractor2:
     def __init__(self, debug=False, device="cuda", binarize=False):
@@ -41,11 +44,22 @@ class TextExtractor2:
         _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         return Image.fromarray(binary)
 
+    def _find_spine_x(self, np_gray, w, h):
+        kernel = np.ones((10, 2), np.uint8)
+        dilated = cv2.dilate(np_gray, kernel, iterations=1)
+        half_w = w // 2
+        strip_x1 = max(0, half_w - 75)
+        strip_x2 = min(w, half_w + 75)
+        strip = dilated[:, strip_x1:strip_x2]
+        vertical_sum = np.sum(strip, axis=0)
+        return strip_x1 + int(np.argmin(vertical_sum))
+
     def extract_text_lines(self, image_path, debug_dir=None):
         with Image.open(image_path) as pil_image:
             source_image = self._straighten(pil_image.copy())
             detection_image = self._binarize(source_image).convert("RGB") if self.binarize else source_image.convert("RGB")
         w, h = source_image.size
+        spine_x = self._find_spine_x(np.array(source_image.convert("L")), w, h)
 
         # surya lay out predictions
         predictions = self.lym([detection_image])
@@ -98,6 +112,24 @@ class TextExtractor2:
 
         page_prediction = predictions[0] if predictions else None
         all_boxes = merge_overlapping_boxes(page_prediction.bboxes) if page_prediction else []
+
+        class _SBox:
+            def __init__(self, bbox):
+                self.bbox = bbox
+
+        split_boxes = []
+        for box in all_boxes:
+            x1, y1, x2, y2 = box.bbox
+            if (x2 - x1) >= 0.8 * w:
+                _log.warning(f"Te grote bounding box ({(x2 - x1) / w:.0%} van de breedte v.d. afbeelding) in {Path(image_path).name} — gesplitst bij middenlijn x={spine_x}")
+                if x1 < spine_x < x2:
+                    split_boxes.append(_SBox((x1, y1, spine_x, y2)))
+                    split_boxes.append(_SBox((spine_x, y1, x2, y2)))
+                else:
+                    split_boxes.append(box)
+            else:
+                split_boxes.append(box)
+        all_boxes = split_boxes
 
         left_boxes = []
         right_boxes = []

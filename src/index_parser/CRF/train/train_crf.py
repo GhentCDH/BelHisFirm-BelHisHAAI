@@ -72,3 +72,19 @@ class Train:
         joblib.dump(self.model, model_path)
         print(f"\033[92m[SAVED]: \033[97mModel saved as {model_path}\033[97m")
         return accuracy
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Train a CRF model from a ground truth CSV.")
+    parser.add_argument("ground_truth", type=str, help="Path to the ground truth CSV file")
+    parser.add_argument("model_name", type=str, help="Output model name (saved to model/<name>.pkg)")
+    parser.add_argument("--c1", type=float, default=0.1, help="L1 regularisation (default: 0.1)")
+    parser.add_argument("--c2", type=float, default=0.1, help="L2 regularisation (default: 0.1)")
+    parser.add_argument("--max-iter", type=int, default=100, help="Max iterations (default: 100)")
+    args = parser.parse_args()
+
+    accuracy = Train().train(args.ground_truth, args.model_name, args.c1, args.c2, args.max_iter)
+    if accuracy is not None:
+        print(f"\033[92m[ACCURACY]: \033[97m{accuracy:.4f}\033[97m")
