@@ -61,7 +61,7 @@ class Output_CRF:
             if not (0 <= index < len(converted_line)):
                 continue
 
-            if clean_delimiters and token in delimiters:
+            if clean_delimiters and token in delimiters and label != "AD":
                 continue
 
             if converted_line[index]:

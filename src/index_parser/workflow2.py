@@ -70,7 +70,7 @@ class _PageLogHandler(logging.Handler):
 
 
 class IndexParser:
-    _DEFAULT_MODEL = str(Path(__file__).parent / "model" / "1892-V5.pkg")
+    _DEFAULT_MODEL = str(Path(__file__).parent / "model" / "1892-V6.pkg")
 
     def __init__(self, model_path=None, debug_mode=None, binarize=False):
         self.text_extractor = TextExtractor2(debug=(debug_mode == "bbox"), binarize=binarize)
