@@ -1,0 +1,90 @@
+import sys
+import sklearn_crfsuite
+import joblib
+import json
+import pandas as pd
+from pathlib import Path
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report, accuracy_score
+from tqdm import tqdm
+
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from CRF.utils.convert_to_features import Convert_To_Features
+
+class Train:
+    def __init__(self):
+        self.model = None
+        self.convert_to_features = Convert_To_Features()
+        self.training_data_label, self.training_data_token = [], []
+        self.X_Train, self.X_Test, self.Y_Train, self.Y_Test = [], [], [], []
+
+    def extract_ground_truth(self, csv_file):
+        data = pd.read_csv(csv_file)
+        data = data.astype(str)  # Convert all cells to string
+        grouped_data = data.groupby('id')
+        for _, group in tqdm(grouped_data, desc="\033[92m[LOADING]: \033[97mExtracting Ground Truth", ncols=100):
+            tokens = group['value'].tolist()
+            labels = group['key'].tolist()
+            features = Convert_To_Features.generate_token_features(tokens)
+            self.training_data_token.append(features)
+            self.training_data_label.append(labels)
+
+    def create_test_set(self, size=0.1):
+        self.X_Train, self.X_Test, self.Y_Train, self.Y_Test = train_test_split(
+            self.training_data_token, self.training_data_label, test_size=size, random_state=69
+        )
+
+    def construct_model(self, c1, c2, max_iter):
+        self.model = sklearn_crfsuite.CRF(
+            algorithm='lbfgs', c1=c1, c2=c2, max_iterations=max_iter, all_possible_transitions=False, verbose=True
+        )
+
+    def check_labels(self, csv_file):
+        with open(Path(__file__).parent.parent / 'labels' / 'labels.json') as json_file:
+            valid_labels = set(json.load(json_file).keys())
+        data = pd.read_csv(csv_file)
+        for row, label in enumerate(data['key'], start=2):
+            if label not in valid_labels and label not in {"START", "END"}:
+                print(f"\033[91m[ERROR]: Invalid key in row {row} - {label}\033[97m")
+                return False
+        return True
+
+    def train(self, ground_truth_path, model_name, c1, c2, max_it):
+        if not self.check_labels(ground_truth_path):
+            print("\033[91m[ERROR]: \033[97mCSV labels are invalid! Fix them before training.\033[97m")
+            return
+
+        self.extract_ground_truth(ground_truth_path)
+        self.create_test_set()
+        self.construct_model(c1, c2, max_it)
+
+        print("\033[92m[TRAINING]: \033[97mTraining model...")
+        self.model.fit(self.training_data_token, self.training_data_label)
+        
+        print("\033[92m[EVALUATION]: \033[97mGenerating classification report...")
+        Y_Pred = self.model.predict(self.X_Test)
+        Y_Test_flat = [label for seq in self.Y_Test for label in seq]
+        Y_Pred_flat = [label for seq in Y_Pred for label in seq]
+        
+        accuracy = accuracy_score(Y_Test_flat, Y_Pred_flat)
+        
+        model_path = str(Path(__file__).parent.parent.parent / 'model' / f'{model_name}.pkg')
+        joblib.dump(self.model, model_path)
+        print(f"\033[92m[SAVED]: \033[97mModel saved as {model_path}\033[97m")
+        return accuracy
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Train a CRF model from a ground truth CSV.")
+    parser.add_argument("ground_truth", type=str, help="Path to the ground truth CSV file")
+    parser.add_argument("model_name", type=str, help="Output model name (saved to model/<name>.pkg)")
+    parser.add_argument("--c1", type=float, default=0.1, help="L1 regularisation (default: 0.1)")
+    parser.add_argument("--c2", type=float, default=0.1, help="L2 regularisation (default: 0.1)")
+    parser.add_argument("--max-iter", type=int, default=100, help="Max iterations (default: 100)")
+    args = parser.parse_args()
+
+    accuracy = Train().train(args.ground_truth, args.model_name, args.c1, args.c2, args.max_iter)
+    if accuracy is not None:
+        print(f"\033[92m[ACCURACY]: \033[97m{accuracy:.4f}\033[97m")
