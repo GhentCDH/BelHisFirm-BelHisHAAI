@@ -1,4 +1,5 @@
 import argparse
+import itertools
 import logging
 import re
 import sys
@@ -12,6 +13,23 @@ _log = logging.getLogger("index_parser")
 
 # find ./ -maxdepth 3 -name "1889"
 
+_RAINBOW = itertools.cycle([
+    "\033[1;38;2;255;0;0m",      # red
+    "\033[1;38;2;255;128;0m",    # orange
+    "\033[1;38;2;255;255;0m",    # yellow
+    "\033[1;38;2;0;255;0m",      # green
+    "\033[1;38;2;0;255;255m",    # cyan
+    "\033[1;38;2;0;128;255m",    # blue
+    "\033[1;38;2;255;0;255m",    # magenta
+])
+_RESET = "\033[0m"
+
+
+class _RainbowFormatter(logging.Formatter):
+    def format(self, record):
+        return next(_RAINBOW) + super().format(record) + _RESET
+
+
 def _setup_log(output_dir):
     _log.setLevel(logging.INFO)
     _log.propagate = False
@@ -20,7 +38,7 @@ def _setup_log(output_dir):
     fh.setFormatter(fmt)
     _log.addHandler(fh)
     ch = logging.StreamHandler()
-    ch.setFormatter(fmt)
+    ch.setFormatter(_RainbowFormatter("%(asctime)s  %(levelname)-8s  %(message)s", datefmt="%H:%M:%S"))
     _log.addHandler(ch)
 
 try:
@@ -30,6 +48,7 @@ try:
     from .processing.crf_preprocessor import CRFPreProcessor
     from .processing.crf_postprocessor import CRFPostProcessor
     from .processing.excel_formatter import ExcelFormatter
+    from .processing.rule_based_merger import RuleBasedMerger
     from .CRF.predict_crf import Predict
 except ImportError:
     sys.path.insert(0, str(Path(__file__).parent))
@@ -39,6 +58,7 @@ except ImportError:
     from processing.crf_preprocessor import CRFPreProcessor
     from processing.crf_postprocessor import CRFPostProcessor
     from processing.excel_formatter import ExcelFormatter
+    from processing.rule_based_merger import RuleBasedMerger
     from CRF.predict_crf import Predict
 
 _OUTPUT_BASE_DIR = Path(__file__).parent / "output"
@@ -81,6 +101,7 @@ class IndexParser:
         self.crf_preprocessor = CRFPreProcessor()
         self.crf_postprocessor = CRFPostProcessor()
         self.excel_formatter = ExcelFormatter()
+        self.rule_merger = RuleBasedMerger()
 
     def run(self, folder_path, index_start_page=None, index_end_page=None, output_dir=None):
         timestamp = datetime.datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
@@ -149,6 +170,9 @@ class IndexParser:
                     seen.add(line)
                     deduped.append(line)
             page_lines = deduped
+
+            # Pass 2: rule-based merge — results are never deduplicated or undone
+            page_lines = self.rule_merger.process(page_lines)
 
             if self.debug_mode == "ocr":
                 continue
