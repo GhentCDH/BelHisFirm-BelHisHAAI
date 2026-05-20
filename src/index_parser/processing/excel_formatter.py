@@ -112,8 +112,16 @@ class ExcelFormatter:
         _SKIP = {"Full Text", "RecordID", "ExtraInformation", "Delimiter"}  # RecordID has its own rule; others are optional
         check_cols = [i for i, h in enumerate(header) if h and h not in _SKIP]
 
+        name_col = header.index("Name") if "Name" in header else None
+
         for row_idx, row in enumerate(ws.iter_rows(min_row=2)):
-            missing = [header[i] for i in check_cols if not str(row[i].value or "").strip()]
+            name_val = str(row[name_col].value or "") if name_col is not None else ""
+            skip_address = "Id" in name_val
+            missing = [
+                header[i] for i in check_cols
+                if not str(row[i].value or "").strip()
+                and not (skip_address and header[i] == "Address")
+            ]
             if not missing:
                 continue
             for cell in row:
