@@ -4,9 +4,9 @@ import logging
 _log = logging.getLogger("index_parser")
 
 try:
-    from .merge_rules import END_RULES, START_RULES
+    from .merge_rules import END_RULES, START_RULES, MODERN_END_RULES, MODERN_START_RULES
 except ImportError:
-    from merge_rules import END_RULES, START_RULES
+    from merge_rules import END_RULES, START_RULES, MODERN_END_RULES, MODERN_START_RULES
 
 
 class RuleBasedMerger:
@@ -16,6 +16,10 @@ class RuleBasedMerger:
     Applies ordered end/start rules (defined in merge_rules.py) to decide
     whether a new OCR line continues the current entry or opens a new one.
     Rules can be changed by editing merge_rules.py without touching this file.
+
+    Two rule sets are available: the legacy (pre-1903) rules, and the modern
+    (1903-onward) rules where the record id trails the entry instead of leading
+    it — pass modern=True to process() to use those instead.
     """
 
     def __init__(self, rules_path=None):
@@ -26,23 +30,32 @@ class RuleBasedMerger:
             spec.loader.exec_module(mod)
             end_defs = getattr(mod, "END_RULES", [])
             start_defs = getattr(mod, "START_RULES", [])
+            modern_end_defs = getattr(mod, "MODERN_END_RULES", [])
+            modern_start_defs = getattr(mod, "MODERN_START_RULES", [])
         else:
             end_defs = END_RULES
             start_defs = START_RULES
+            modern_end_defs = MODERN_END_RULES
+            modern_start_defs = MODERN_START_RULES
 
         self._end_rules = [(r["name"], re.compile(r["pattern"])) for r in end_defs]
         self._start_rules = [(r["name"], re.compile(r["pattern"])) for r in start_defs]
+        self._modern_end_rules = [(r["name"], re.compile(r["pattern"])) for r in modern_end_defs]
+        self._modern_start_rules = [(r["name"], re.compile(r["pattern"])) for r in modern_start_defs]
 
-    def process(self, lines: list) -> list:
+    def process(self, lines: list, modern: bool = False) -> list:
         """Merge lines into complete entries and return the resulting list."""
         if not lines:
             return []
+
+        end_rules = self._modern_end_rules if modern else self._end_rules
+        start_rules = self._modern_start_rules if modern else self._start_rules
 
         entries = []
         current = [lines[0]]
 
         for line in lines[1:]:
-            rule_name = self._new_entry_reason(current[-1], line)
+            rule_name = self._new_entry_reason(current[-1], line, end_rules, start_rules)
             if rule_name:
                 merged = self._combine(current)
                 if len(current) > 1:
@@ -60,12 +73,12 @@ class RuleBasedMerger:
         entries.append(self._combine(current))
         return entries
 
-    def _new_entry_reason(self, last_line: str, current_line: str):
+    def _new_entry_reason(self, last_line: str, current_line: str, end_rules, start_rules):
         """Return the matching rule name, or None if lines should be merged."""
-        for name, pattern in self._end_rules:
+        for name, pattern in end_rules:
             if pattern.search(last_line):
                 return name
-        for name, pattern in self._start_rules:
+        for name, pattern in start_rules:
             if pattern.match(current_line):
                 return name
         return None
