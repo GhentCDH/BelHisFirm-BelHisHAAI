@@ -210,6 +210,28 @@ def _is_capitals_only(text):
     return bool(letters) and letters.isupper()
 
 
+_MISSING_QUARTER_RUN_LENGTH = 5
+
+
+def _has_run_of_missing_quarters(quarters, run_length=_MISSING_QUARTER_RUN_LENGTH):
+    """True if quarters (one entry per row, None where no id.quarter marker was
+    found) contains run_length or more consecutive Nones. Post-hoc sanity check for
+    modern-format pages: the index-range auto-detection isn't perfect (a "table
+    annuelle" running header repeats across the whole index, so it can occasionally
+    land on a quarterly-only page that doesn't actually have id.quarter markers on
+    every row) — a long run of rows with no marker at all is a strong signal this
+    page isn't really part of the annual index."""
+    streak = 0
+    for quarter in quarters:
+        if quarter is None:
+            streak += 1
+            if streak >= run_length:
+                return True
+        else:
+            streak = 0
+    return False
+
+
 class _PageLogHandler(logging.Handler):
     """Captures log records for a single page so they can be written to _explain.txt."""
     def __init__(self):
@@ -442,6 +464,14 @@ class IndexParser:
                     predicted_texts.append(line)
                     quarters.append(quarter)
                     company_types.append(company_type)
+
+            if modern_format and _has_run_of_missing_quarters(quarters):
+                _log.warning(f"{image_path.name} overgeslagen: {_MISSING_QUARTER_RUN_LENGTH}+ opeenvolgende "
+                              f"regels zonder geldig NUMMER.KWARTAAL-patroon — dit lijkt een kwartaaltabel, "
+                              f"geen jaarlijkse index.")
+                (output_dir / image_path.name).unlink(missing_ok=True)
+                self.crf_predictor.reset()
+                continue
 
             self._save_excel(predicted_texts, output_dir, image_path.stem + ".xlsx",
                              processing_log=page_log.messages.copy(), quarters=quarters,

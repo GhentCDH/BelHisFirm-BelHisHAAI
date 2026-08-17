@@ -44,6 +44,14 @@ _DEFAULT_ANCHOR_TIERS = [
 _FUZZY_THRESHOLD = 0.90
 _MIN_TEXT_BOXES = 30
 
+# A page whose "table annuelle"-style header also mentions a quarter/trimester (e.g.
+# "ANNEXE AU MONITEUR BELGE. — TABLE ANNUELLE. — 1er TRIM. 1896.") is a running header
+# WITHIN the annual table showing which quarter's pages follow, not the true start of
+# the comprehensive index — that start is a clean title/divider page with no quarter
+# mentioned at all. Excluded from yearly-tier matches so locate() keeps searching past
+# these instead of anchoring on the first one it sees.
+_QUARTER_EXCLUDE_TERMS = ["trimestre", "trim"]
+
 
 def _page_num(image_path):
     match = re.search(r'_(\d+)\.tif$', image_path.name)
@@ -57,7 +65,7 @@ def _normalize(text):
     return re.sub(r"\s+", " ", text).strip()
 
 
-def _matches_anchor(lines, anchors):
+def _matches_anchor(lines, anchors, exclude_words=None):
     """Matches anchor phrases against individual OCR lines rather than the whole
     header-band blob — comparing a short anchor against a long multi-line blob makes
     difflib's ratio() unreliable (unrelated running headers can score deceptively high).
@@ -68,14 +76,21 @@ def _matches_anchor(lines, anchors):
     "TABLE DU <title>" vs just "<title>", or "<title> COMMERCIALES" vs "<title>" — so a
     plain similarity ratio over the whole phrase would treat them as a near-match and
     miss the one word that actually matters.
+
+    exclude_words, if given, disqualifies a line from matching at all if it contains
+    any of those words literally — used to reject a quarterly sub-header that would
+    otherwise look like a match (see _QUARTER_EXCLUDE_TERMS).
     """
     anchors_norm = [_normalize(a) for a in anchors]
     anchors_norm = [a for a in anchors_norm if a]
+    exclude_norm = {_normalize(w) for w in exclude_words} if exclude_words else set()
     for line in lines:
         norm = _normalize(line)
         if len(norm) < 15:
             continue
         words = set(norm.split())
+        if exclude_norm and words & exclude_norm:
+            continue
         for anchor_norm in anchors_norm:
             anchor_words = anchor_norm.split()
             if not anchor_words or not all(w in words for w in anchor_words):
@@ -149,8 +164,9 @@ class IndexLocator:
         start_pos_in_window = None
         kind = None
         for tier, tier_kind in anchor_tiers:
+            exclude = _QUARTER_EXCLUDE_TERMS if tier_kind == "yearly" else None
             start_pos_in_window = next(
-                (i for i, lines in enumerate(all_headers) if _matches_anchor(lines, tier)), None
+                (i for i, lines in enumerate(all_headers) if _matches_anchor(lines, tier, exclude_words=exclude)), None
             )
             if start_pos_in_window is not None:
                 kind = tier_kind
