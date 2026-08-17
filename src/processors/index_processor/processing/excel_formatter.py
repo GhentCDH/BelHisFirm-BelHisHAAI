@@ -5,6 +5,11 @@ from pathlib import Path
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill
 
+try:
+    from .crf_preprocessor import VALID_QUARTERS
+except ImportError:
+    from crf_preprocessor import VALID_QUARTERS
+
 _RED    = PatternFill(start_color="FF746C", end_color="FF746C", fill_type="solid")
 _YELLOW = PatternFill(start_color="FFFF99", end_color="FFFF99", fill_type="solid")
 _GREEN  = PatternFill(start_color="99FF99", end_color="99FF99", fill_type="solid")
@@ -15,7 +20,7 @@ _NAME_SIMILARITY_THRESHOLD = 0.9
 _LEGEND = """\
 LEGENDA
 -------
-ROOD   = Ontbrekend veld of geen/ongeldige RecordID
+ROOD   = Ontbrekend veld, geen/ongeldige RecordID, of ongeldig kwartaal
 GEEL   = Mogelijke duplicaat op basis van RecordID
 ORANJE = Onverwachte waarde in RecordID
 GROEN  = Mogelijke duplicaat op basis van naam
@@ -36,6 +41,7 @@ class ExcelFormatter:
         log = defaultdict(lambda: {'color': None, 'reasons': []})
         self._apply_name_similarity_rules(ws, log)
         self._apply_record_id_rules(ws, log)
+        self._apply_quarter_rules(ws, log)
         self._apply_missing_value_rules(ws, log)  # runs last — RED always wins
         wb.save(path)
         self._write_explain_log(path, log, processing_log or [])
@@ -107,13 +113,37 @@ class ExcelFormatter:
             log[row_num]['color'] = color  # overwrites GREEN when a RecordID rule fires
             log[row_num]['reasons'].append(reason)
 
+    def _apply_quarter_rules(self, ws, log):
+        header = [cell.value for cell in next(ws.iter_rows(min_row=1, max_row=1))]
+        if "Quarter" not in header:
+            return
+
+        col = header.index("Quarter")
+        for row_idx, row in enumerate(ws.iter_rows(min_row=2)):
+            value = str(row[col].value or "").strip()
+            if not value or value in VALID_QUARTERS:
+                continue
+            for cell in row:
+                cell.fill = _RED
+            row_num = row_idx + 2
+            log[row_num]['color'] = 'RED'
+            log[row_num]['reasons'].append(f"Kwartaal \".{value}\" is ongeldig (verwacht 1-4)")
+
     def _apply_missing_value_rules(self, ws, log):
         header = [cell.value for cell in next(ws.iter_rows(min_row=1, max_row=1))]
-        _SKIP = {"Full Text", "RecordID", "ExtraInformation", "Delimiter"}  # RecordID has its own rule; others are optional
+        _SKIP = {"Full Text", "RecordID", "ExtraInformation", "Delimiter", "Quarter", "CompanyType"}  # RecordID has its own rule; others are optional
         check_cols = [i for i, h in enumerate(header) if h and h not in _SKIP]
 
+        name_col = header.index("Name") if "Name" in header else None
+
         for row_idx, row in enumerate(ws.iter_rows(min_row=2)):
-            missing = [header[i] for i in check_cols if not str(row[i].value or "").strip()]
+            name_val = str(row[name_col].value or "") if name_col is not None else ""
+            skip_address = "Id" in name_val
+            missing = [
+                header[i] for i in check_cols
+                if not str(row[i].value or "").strip()
+                and not (skip_address and header[i] == "Addres")
+            ]
             if not missing:
                 continue
             for cell in row:

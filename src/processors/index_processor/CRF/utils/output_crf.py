@@ -8,7 +8,9 @@ _CRF_DIR = Path(__file__).parent.parent
 _OUTPUT_DIR = _CRF_DIR.parent / 'output'
 _LABELS_FILE = _CRF_DIR / 'labels' / 'labels.json'
 
-# Class for outputting CRF results, either in CSV or Excel format, 
+_DELIMITERS = {".", ",", ";", ":", "!", "?", "(", ")", "°", "/", "&", '"', "—", "-"}
+
+# Class for outputting CRF results, either in CSV or Excel format,
 # and handling various label transformations and color-coded printing.
 class Output_CRF:
     def __init__(self):
@@ -25,14 +27,14 @@ class Output_CRF:
 
     # Collect labels from a JSON file and store them in the object's attributes
     def collect_labels(self):
-        # Open and read the JSON file that contains the label information
         with open(_LABELS_FILE) as json_file:
-            labels_json = json.load(json_file)  # Load the JSON data into a Python dictionary
-            json_file.close()
-        
+            labels_json = json.load(json_file)
+
         # Extract columns (values from JSON) and keys (keys from JSON)
         self.columns = [value for key, value in list(labels_json.items())[1:]]  # Exclude the first item
         self.keys = [key for key in list(labels_json.keys())[1:]]  # Exclude the first item (usually "START" or "END")
+        self._ad_index = self.keys.index("AD") if "AD" in self.keys else -1
+        self._n_index = self.keys.index("N") if "N" in self.keys else -1
 
     # Create a tuple for each token and its corresponding prediction
     def create_tuple_from_prediction(self, token, prediction):
@@ -51,21 +53,33 @@ class Output_CRF:
 
         return tuple_list  # Return the list of tuples
 
+    def _neighbor_label(self, tuple_list, i, direction):
+        """Return the label of the nearest non-delimiter token in the given direction (-1 or +1)."""
+        rng = range(i - 1, -1, -1) if direction < 0 else range(i + 1, len(tuple_list))
+        for j in rng:
+            if tuple_list[j][0] not in _DELIMITERS:
+                return tuple_list[j][1]
+        return None
+
     # Transform a list of tuples into a format suitable for CSV/Excel output
     def transform_line_to_csv_format(self, tuple_list, clean_delimiters=True):
-        delimiters = {".", ",", ";", ":", "!", "?", "(", ")", "°", "/", "&", '"', "—", "-"}
-
         converted_line = [""] * len(self.keys)
 
-        for token, label, index in tuple_list:
+        for i, (token, label, index) in enumerate(tuple_list):
             if not (0 <= index < len(converted_line)):
                 continue
 
-            if clean_delimiters and token in delimiters and label != "AD":
+            if clean_delimiters and token in _DELIMITERS and label != "AD" and label != "N":
+                prev_label = self._neighbor_label(tuple_list, i, -1)
+                next_label = self._neighbor_label(tuple_list, i, +1)
+                for col_label, col_index in (("AD", self._ad_index), ("N", self._n_index)):
+                    if col_index >= 0 and prev_label == col_label and next_label == col_label:
+                        converted_line[col_index] += token  # no space: delimiter attaches to preceding word
                 continue
 
             if converted_line[index]:
-                converted_line[index] += f" {token}"
+                sep = "" if converted_line[index].endswith("-") else " "
+                converted_line[index] += f"{sep}{token}"
             else:
                 converted_line[index] = token
 
@@ -79,7 +93,6 @@ class Output_CRF:
         for line in lines:
             df = pd.concat([df, pd.Series(line, index=df.columns)], ignore_index=True)  # Append each line to the DataFrame
         df.to_csv(_OUTPUT_DIR / f'{file}_{index}_{filename}.csv', index=False)
-        self.clean()  # Clean up the attributes after saving the file
         self.clean()  # Clean up the attributes after saving the file
 
     # Create an Excel file from the transformed lines
@@ -121,13 +134,13 @@ class Output_CRF:
             color = self.get_ansi_color_code(item[2])  # Get the color code
             line_out += f" {color}{item[0]}\033[0m"  # Append token with color
         return f"[CRF-Result]: {line_out}"  # Return the formatted string
-    
+
     def label_prediction(self, tuple_list):
         line_out = ""  # Initialize an empty string
         for item in tuple_list:  # Loop through each tuple in the list
             line_out += f" {item[1]}"  # Append the predicted label
-        return f"[CRF-Labels]: {line_out}"  # Return the formatted string   
-    
+        return f"[CRF-Labels]: {line_out}"  # Return the formatted string
+
     # Clean up the internal state of the object
     def clean(self):
         self.columns = []  # Reset columns

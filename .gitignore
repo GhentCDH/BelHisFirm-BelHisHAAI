@@ -224,3 +224,5 @@ __marimo__/
 src/index_parser/model/
 src/index_parser/CRF/BelHisFirm-GT/
 src/index_parser/paths.txt
+.gitignore
+.gitignore
