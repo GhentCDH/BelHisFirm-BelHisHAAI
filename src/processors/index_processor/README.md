@@ -104,6 +104,77 @@ there's a durable record of what actually completed. You can append new lines to
 queue file while it's running; it's re-read before every folder. It stops as soon as
 the file has no pending lines left — it does not wait around for more.
 
+## Online OCR
+
+By default, OCR runs locally on `Qwen/Qwen3-VL-8B-Instruct` (loaded into GPU memory via
+`transformers`). Pass `--online` to instead send line crops to a remote vLLM
+OpenAI-compatible server — no local OCR model is ever loaded in this mode.
+
+```bash
+# Single vLLM endpoint (default: http://localhost:8000/v1/chat/completions)
+uv run src/index_parser/workflow2.py --folder /path/to/TIF/1887 --online
+
+# Two vLLM instances/ports, round-robined, 2 requests in flight at once
+uv run src/index_parser/workflow2.py --folder /path/to/TIF/1887 --online \
+    --base-url http://gpu-server:8000/v1/chat/completions \
+    --base-url http://gpu-server:8001/v1/chat/completions \
+    --online-workers 2
+```
+
+- `--online` — use the remote OCR server instead of the local model.
+- `--base-url URL` (repeatable) — vLLM chat-completions endpoint. Pass it more than once
+  to round-robin requests across multiple servers/ports (e.g. two separately-served model
+  instances). Default: `http://localhost:8000/v1/chat/completions`.
+- `--online-model NAME` — model name served by the vLLM endpoint(s).
+- `--online-workers N` (default 2) — number of OCR requests kept in flight concurrently per
+  page. Line order is always preserved regardless of completion order.
+
+### Example: four vLLM instances on a DGX Spark
+
+Start four `Qwen3-VL-8B-Instruct` instances, one per GPU-memory-sliced port:
+
+```bash
+docker run --rm \
+  --name qwen3-vl-4x \
+  --gpus all \
+  --ipc=host \
+  -p 127.0.0.1:8000:8000 \
+  -p 127.0.0.1:8001:8001 \
+  -p 127.0.0.1:8002:8002 \
+  -p 127.0.0.1:8003:8003 \
+  -v ~/.cache/huggingface:/root/.cache/huggingface \
+  --entrypoint /bin/bash \
+  vllm/vllm-openai:latest \
+  -c '
+    for port in 8000 8001 8002 8003; do
+      vllm serve Qwen/Qwen3-VL-8B-Instruct \
+        --host 0.0.0.0 \
+        --port "$port" \
+        --dtype bfloat16 \
+        --max-model-len 8192 \
+        --gpu-memory-utilization 0.23 \
+        --kv-cache-memory-bytes 2G \
+        --trust-remote-code &
+    done
+    wait
+  '
+```
+
+Then point `workflow2.py` at all four, round-robined, with 4 requests in flight at once:
+
+```bash
+uv run src/processors/index_processor/workflow2.py \
+  --folder "/mnt/UGent_Share/ghentcdh_belhisfirm/EHC_B665_O/20251213/TIF/1919/IV.2" \
+  --modern-format --start-page 1763 --end-page 1896 \
+  --online \
+  --base-url localhost:8000/v1/chat/completions \
+  --base-url localhost:8001/v1/chat/completions \
+  --base-url localhost:8002/v1/chat/completions \
+  --base-url localhost:8003/v1/chat/completions \
+  --online-workers 4 \
+  --output "/mnt/UGent_Share/ghentcdh_belhisfirm/Index_Output/"
+```
+
 ## Other flags
 
 - `--start-page` / `--end-page` — manual page range, skips auto-detection entirely.

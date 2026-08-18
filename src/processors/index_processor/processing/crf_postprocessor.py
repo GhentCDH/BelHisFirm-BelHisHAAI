@@ -1,4 +1,7 @@
+import logging
 import re
+
+_log = logging.getLogger("index_parser")
 
 _ADDR_PARTICLES = re.compile(r'\b(à|te)\b\s*')
 
@@ -32,5 +35,12 @@ class CRFPostProcessor:
     def _drop_consecutive_duplicate_records(self, df):
         if "RecordID" not in df.columns:
             return df
-        mask = df["RecordID"].ne(df["RecordID"].shift(1))
-        return df[mask].reset_index(drop=True)
+        # An empty RecordID next to another empty RecordID isn't a real duplicate — it
+        # just means the CRF didn't find an id on either line — so only collapse
+        # consecutive rows that share the same *non-empty* RecordID.
+        non_empty = df["RecordID"].astype(str).str.strip().ne("")
+        is_duplicate = non_empty & df["RecordID"].eq(df["RecordID"].shift(1))
+        if is_duplicate.any():
+            dropped = df.loc[is_duplicate, "RecordID"].tolist()
+            _log.warning(f"{len(dropped)} rij(en) verwijderd als opeenvolgende dubbele RecordID: {dropped}")
+        return df[~is_duplicate].reset_index(drop=True)
