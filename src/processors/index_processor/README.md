@@ -164,8 +164,8 @@ Then point `workflow2.py` at all four, round-robined, with 4 requests in flight 
 
 ```bash
 uv run src/processors/index_processor/workflow2.py \
-  --folder "/mnt/UGent_Share/ghentcdh_belhisfirm/EHC_B665_O/20251213/TIF/1919/IV.2" \
-  --modern-format --start-page 1763 --end-page 1896 \
+  --folder "/mnt/UGent_Share/ghentcdh_belhisfirm/EHC_B665_O/20251222/TIF/1929/IV.3" \
+  --modern-format --start-page 1318 --end-page 1575 \
   --online \
   --base-url localhost:8000/v1/chat/completions \
   --base-url localhost:8001/v1/chat/completions \
