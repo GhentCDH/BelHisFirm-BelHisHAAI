@@ -24,8 +24,8 @@ for arg in "$@"; do
 done
 
 BASE_DIR="${args[0]:-/mnt/UGent_Share/ghentcdh_belhisfirm/EHC_B665_O}"
-START_YEAR="${args[1]:-1923}"
-END_YEAR=1923
+START_YEAR="${args[1]:-1932}"
+END_YEAR=1932
 
 for (( year=START_YEAR; year<=END_YEAR; year++ )); do
     matches=$(find "$BASE_DIR" -type d -path "*/TIF/${year}/IV*" 2>/dev/null | sort -V)
