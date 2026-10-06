@@ -49,7 +49,7 @@ def _setup_log(output_dir):
 
 try:
     from .processing.text_extraction2 import TextExtractor2
-    from .processing.OCR2 import OCR
+    from .processing.OCR2 import OCR, _INSTRUCTION
     from .processing.ocr_postprocessor import OCRPostProcessor
     from .processing.crf_preprocessor import CRFPreProcessor, VALID_QUARTERS
     from .processing.crf_postprocessor import CRFPostProcessor
@@ -60,7 +60,7 @@ try:
 except ImportError:
     sys.path.insert(0, str(Path(__file__).parent))
     from processing.text_extraction2 import TextExtractor2
-    from processing.OCR2 import OCR
+    from processing.OCR2 import OCR, _INSTRUCTION
     from processing.ocr_postprocessor import OCRPostProcessor
     from processing.crf_preprocessor import CRFPreProcessor, VALID_QUARTERS
     from processing.crf_postprocessor import CRFPostProcessor
@@ -68,6 +68,9 @@ except ImportError:
     from processing.rule_based_merger import RuleBasedMerger
     from processing.index_locator import IndexLocator
     from CRF.predict_crf import Predict
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from text_processor.OCRrequest import OnlineOCR
 
 _OUTPUT_BASE_DIR = Path(__file__).parent / "output"
 _IMAGE_SCALE = 0.50
@@ -249,10 +252,15 @@ class _PageLogHandler(logging.Handler):
 class IndexParser:
     _DEFAULT_MODEL = str(Path(__file__).parent / "model" / "19thcenturyMoniteurV7.pkg")
 
-    def __init__(self, model_path=None, debug_mode=None, binarize=False):
+    def __init__(self, model_path=None, debug_mode=None, binarize=False,
+                 online=False, base_urls=None, online_model=None, online_workers=2):
         self.model_path = model_path or self._DEFAULT_MODEL
         self.debug_mode = debug_mode
         self.binarize = binarize
+        self.online = online
+        self.base_urls = base_urls
+        self.online_model = online_model
+        self.online_workers = online_workers
         self.postprocessor = OCRPostProcessor()
         self.crf_preprocessor = CRFPreProcessor()
         self.crf_postprocessor = CRFPostProcessor()
@@ -270,7 +278,11 @@ class IndexParser:
         if self.text_extractor is None:
             self.text_extractor = TextExtractor2(debug=(self.debug_mode == "bbox"), binarize=self.binarize)
         if self.ocr_system is None:
-            self.ocr_system = OCR()
+            if self.online:
+                self.ocr_system = OnlineOCR(base_urls=self.base_urls, model=self.online_model,
+                                             prompt=_INSTRUCTION, max_workers=self.online_workers)
+            else:
+                self.ocr_system = OCR()
         if self.crf_predictor is None:
             self.crf_predictor = Predict(self.model_path)
 
@@ -380,9 +392,15 @@ class IndexParser:
             if self.debug_mode == "bbox":
                 continue
 
+            line_images = [text for text, _ in extracted]
+            if self.online:
+                ocr_results = self.ocr_system.run_batch(line_images)
+            else:
+                ocr_results = [self.ocr_system.run(img)
+                                for img in tqdm(line_images, desc=f"Running OCR on {image_path.name}")]
+
             page_lines = []
-            for text, is_continuation in tqdm(extracted, desc=f"Running OCR on {image_path.name}"):
-                ocr_result = self.ocr_system.run(text)
+            for (text, is_continuation), ocr_result in zip(extracted, ocr_results):
                 if self.debug_mode == "ocr":
                     print(f"[OCR] {ocr_result}")
 
@@ -553,9 +571,22 @@ if __name__ == "__main__":
                                  "for quick validation (e.g. of --modern-format changes) instead of scanning "
                                  "a whole folder. Output goes to a '<derived-output>_test' folder so it's kept "
                                  "separate from real runs. Overrides --folder/--start-page/--end-page/--dry.")
+    arg_parser.add_argument("--online", action="store_true",
+                            help="Use a remote vLLM OCR server instead of the local Qwen3-VL model")
+    arg_parser.add_argument("--base-url", action="append", default=None, dest="base_url",
+                            help="vLLM chat-completions endpoint (repeatable — pass twice to "
+                                 "round-robin across two servers/ports). Default: "
+                                 "http://localhost:8000/v1/chat/completions")
+    arg_parser.add_argument("--online-model", type=str, default=None, dest="online_model",
+                            help="Model name served by the vLLM endpoint(s)")
+    arg_parser.add_argument("--online-workers", type=int, default=2, dest="online_workers",
+                            help="Number of concurrent OCR requests in flight per page when "
+                                 "--online is set (default: 2, matching two servable model instances)")
     args = arg_parser.parse_args()
 
-    index_parser = IndexParser(model_path=args.model, debug_mode=args.debug, binarize=args.binarize)
+    index_parser = IndexParser(model_path=args.model, debug_mode=args.debug, binarize=args.binarize,
+                                online=args.online, base_urls=args.base_url, online_model=args.online_model,
+                                online_workers=args.online_workers)
 
     if args.queue_file:
         _process_queue_file(index_parser, args.queue_file,
