@@ -50,50 +50,123 @@ class IOManager:
         image_files = sorted(list(Path(images_folder_path).glob("*.jpg")) + list(Path(images_folder_path).glob("*.jpeg")) + list(Path(images_folder_path).glob("*.tif")) + list(Path(images_folder_path).glob("*.jp2")))
         return image_files
 
+    CSV_FIELDNAMES = ['record_id', 'internal_record_number', 'record_title', 'folder_name', 'num_pages',
+                      'start_page', 'end_page', 'start_bbox', 'end_bbox', 'num_tables', 'num_tables_failed']
+
     @staticmethod
-    def update_records_csv(record: Record, record_folder_path: Path, output_folder_path: Path, table_results: list | None = None) -> None:
-        """ Update CSV file with current record information.
+    def update_records_csv(record: Record, record_folder_path: Path, output_folder_path: Path, tables_summary: list[dict]) -> None:
+        """ Insert or replace this record's row in records_index.csv, keyed by folder name,
+            so re-running a stage never duplicates a record's row.
 
             Args: record (Record): Record to be stored in the CSV file.
-            Args: record_folder (Path): Folder path to the record.
+            Args: record_folder_path (Path): Folder path to the record.
             Args: output_folder_path (Path): Folder path to save the CSV file in.
-            Args: table_results (list | None): TableResults found on this record, if any.
+            Args: tables_summary (list[dict]): Table entries for this record, as built by build_tables_summary.
 
             Returns: None
         """
 
         csv_path = output_folder_path / "records_index.csv"
-        file_exists = csv_path.exists()
+        folder_name = record_folder_path.name
 
-        table_results = table_results or []
-
-        # Prepare record data
         record_data = {
             'record_id': record.record_id,
             'internal_record_number': record.internal_record_number,
             'record_title': record.record_title,
-            'folder_name': record_folder_path.name,
+            'folder_name': folder_name,
             'num_pages': len(record.images),
             'start_page': record.start_header_bbox_page,
             'end_page': record.end_header_bbox_page,
             'start_bbox': str(record.start_header_bbox),
             'end_bbox': str(record.end_header_bbox),
-            'num_tables': len(table_results),
-            'num_tables_failed': sum(1 for r in table_results if r.error is not None),
+            'num_tables': len(tables_summary),
+            'num_tables_failed': sum(1 for t in tables_summary if t["error"] is not None),
         }
 
-        # Write or append to CSV
-        with open(csv_path, 'a', newline='', encoding='utf-8') as f:
-            fieldnames = ['record_id', 'internal_record_number', 'record_title', 'folder_name', 'num_pages',
-                          'start_page', 'end_page', 'start_bbox', 'end_bbox', 'num_tables', 'num_tables_failed']
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
+        rows = []
+        if csv_path.exists():
+            with open(csv_path, 'r', newline='', encoding='utf-8') as f:
+                rows = [row for row in csv.DictReader(f) if row.get('folder_name') != folder_name]
+        rows.append(record_data)
 
-            if not file_exists:
-                writer.writeheader()
-
-            writer.writerow(record_data)
+        with open(csv_path, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=IOManager.CSV_FIELDNAMES, restval='')
+            writer.writeheader()
+            writer.writerows(rows)
 
         logger.info(f"CSV updated: {csv_path}")
+
+    @staticmethod
+    def find_record_folders(output_folder_path: Path) -> list[Path]:
+        """ Record folders are the ones written by save_record_meta. """
+        return sorted(meta.parent for meta in Path(output_folder_path).glob("*/record_meta.json"))
+
+    @staticmethod
+    def save_record_meta(record: Record, record_folder: Path) -> None:
+        """ Writes the non-image fields of a record so later stages can rebuild it from disk. """
+
+        meta = {
+            "record_id": record.record_id,
+            "record_title": record.record_title,
+            "internal_record_number": record.internal_record_number,
+            "start_header_bbox": record.start_header_bbox,
+            "start_header_bbox_meta": record.start_header_bbox_meta,
+            "start_header_bbox_page": record.start_header_bbox_page,
+            "end_header_bbox": record.end_header_bbox,
+            "end_header_bbox_meta": record.end_header_bbox_meta,
+            "end_header_bbox_page": record.end_header_bbox_page,
+        }
+        with open(record_folder / "record_meta.json", 'w', encoding='utf-8') as f:
+            json.dump(meta, f, ensure_ascii=False, indent=2, default=int)
+
+    @staticmethod
+    def load_record(record_folder: Path) -> Record:
+        """ Rebuilds a Record from a folder written by save_record_images + save_record_meta. """
+
+        meta = json.loads((record_folder / "record_meta.json").read_text(encoding="utf-8"))
+        page_pattern = re.compile(r'^page_\d{3}$')
+        page_paths = sorted(f for f in record_folder.glob("page_*.jpg") if page_pattern.match(f.stem))
+        images = [Image.open(p).convert('RGB') for p in page_paths]
+
+        return Record(
+            images=images,
+            record_id=meta["record_id"],
+            record_title=meta["record_title"],
+            internal_record_number=meta["internal_record_number"],
+            start_header_bbox=meta["start_header_bbox"],
+            start_header_bbox_meta=meta["start_header_bbox_meta"],
+            start_header_bbox_page=meta["start_header_bbox_page"],
+            end_header_bbox=meta["end_header_bbox"],
+            end_header_bbox_meta=meta["end_header_bbox_meta"],
+            end_header_bbox_page=meta["end_header_bbox_page"],
+        )
+
+    @staticmethod
+    def build_tables_summary(table_results: list) -> list[dict]:
+        """ One pointer entry per table, as stored under "tables" in ocr_data.json and used for the CSV counts. """
+
+        summary = []
+        for result, stem in zip(table_results, IOManager._table_stems(table_results)):
+            summary.append({
+                "page": result.page_index + 1,
+                "bbox": result.bbox,
+                "crop_file": f"tables/FAILED/{stem}.png" if result.error else f"tables/{stem}.png",
+                "json_file": None if result.error else f"tables/{stem}.json",
+                "error": result.error,
+            })
+        return summary
+
+    @staticmethod
+    def save_tables_index(record_folder: Path, table_results: list) -> None:
+        with open(record_folder / "tables_index.json", 'w', encoding='utf-8') as f:
+            json.dump(IOManager.build_tables_summary(table_results), f, ensure_ascii=False, indent=2)
+
+    @staticmethod
+    def load_tables_index(record_folder: Path) -> list[dict]:
+        index_path = record_folder / "tables_index.json"
+        if not index_path.exists():
+            return []
+        return json.loads(index_path.read_text(encoding="utf-8"))
 
     @staticmethod
     def _table_stems(table_results: list) -> list[str]:
@@ -268,19 +341,8 @@ class IOManager:
 
 
     @staticmethod
-    def save_record_to_json(record: Record, record_folder: Path, ocr_data: list, table_results: list | None = None) -> None:
+    def save_record_to_json(record: Record, record_folder: Path, ocr_data: list, tables_summary: list[dict]) -> None:
         ocr_json_path = record_folder / "ocr_data.json"
-
-        table_results = table_results or []
-        tables_summary = []
-        for result, stem in zip(table_results, IOManager._table_stems(table_results)):
-            tables_summary.append({
-                "page": result.page_index + 1,
-                "bbox": result.bbox,
-                "crop_file": f"tables/FAILED/{stem}.png" if result.error else f"tables/{stem}.png",
-                "json_file": None if result.error else f"tables/{stem}.json",
-                "error": result.error,
-            })
 
         with open(ocr_json_path, 'w', encoding='utf-8') as f:
             json.dump({
