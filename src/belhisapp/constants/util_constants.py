@@ -1,6 +1,6 @@
 from src.belhisapp.widgets.common import UtilButton
-from src.recordprocessing.pipeline import IOManager
-from src.recordprocessing import RecordProcessor
+from src.processors.record_processor.pipeline import IOManager
+from src.processors.record_processor import RecordProcessor
 
 class UtilConstants:
     """ Class used for managing the utilities window. """

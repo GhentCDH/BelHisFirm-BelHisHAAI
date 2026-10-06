@@ -1,24 +1,25 @@
-import cv2
 import numpy as np
-import pytesseract as tesseract
 
 from ultralytics import YOLO
-from PIL import Image, ImageEnhance, ImageFilter
+from PIL import Image
 
-from src.recordprocessing.pipeline.header_validator import HeaderValidator
-from src.recordprocessing.pipeline.image_processor import ImageProcessor
-from src.recordprocessing.pipeline.result_processor import ResultProcessor
+from src.processors.record_processor.pipeline.header_validator import HeaderValidator
+from src.processors.record_processor.pipeline.image_processor import ImageProcessor
+from src.processors.record_processor.pipeline.result_processor import ResultProcessor
 
-from src.recordprocessing.data import ConfigParameter, MappedPrediction
+from src.processors.record_processor.data import ConfigParameter, MappedPrediction
 
-from src.recordprocessing.utils import GPUController
+from src.processors.record_processor.utils import GPUController
 
 import logging
 logger = logging.getLogger(__name__)
 
 class VisionAnalyzer:
 
-    def __init__(self, config: ConfigParameter, yolo_model_file_path: str):
+    HEADER_OCR_PROMPT = "Transcribe the text in this image exactly as printed, including any numbers and punctuation."
+
+    def __init__(self, config: ConfigParameter, yolo_model_file_path: str, glm_ocr):
+        """ Args: glm_ocr (GLMOCREngine): Shared GLM-OCR engine, injected so the model is only loaded once. """
 
         self.yolo_model = YOLO(yolo_model_file_path)
 
@@ -27,6 +28,7 @@ class VisionAnalyzer:
 
         self.image_processor = ImageProcessor(config)
         self.config = config
+        self.glm_ocr = glm_ocr
 
 
     def get_excluded_regions(self, image: Image.Image) -> list:
@@ -84,7 +86,7 @@ class VisionAnalyzer:
                 else:
                     verified_predictions.append(mapped_prediction)
 
-        record_header_predictions = [prediction for prediction in verified_predictions if HeaderValidator.is_record_header_candidate(prediction)]
+        record_header_predictions = [prediction for prediction in verified_predictions if HeaderValidator.is_record_header_candidate(prediction, self.config.header_candidate_labels)]
         if not record_header_predictions:
             logger.info(f"No record headers found in layout predictions...")
             return None
@@ -99,22 +101,9 @@ class VisionAnalyzer:
                 min(image.height, bbox[3] + self.config.padding),
             )
 
-            def prepare_for_ocr(pil_image) -> Image.Image:
-                cv_img = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2GRAY)
-
-                cv_img = cv2.resize(cv_img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
-
-                cv_img = cv2.GaussianBlur(cv_img, (3, 3), 0)
-
-                _, binary = cv2.threshold(cv_img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-
-                return Image.fromarray(binary)
-
             cropped = image.crop(padded_bbox)
-            cropped = prepare_for_ocr(cropped)
 
-            text = tesseract.image_to_string(cropped, config="--psm 6", lang="fra")
-            print(f"\n||\n{text}\n||\n")
+            text = self.glm_ocr.ocr(cropped, prompt=self.HEADER_OCR_PROMPT)
 
             valid = HeaderValidator.is_valid_section_header(text)
 

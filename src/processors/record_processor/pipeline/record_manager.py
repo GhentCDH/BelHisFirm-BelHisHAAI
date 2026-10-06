@@ -3,12 +3,13 @@ import re
 from pathlib import Path
 from PIL import Image
 
-from src.recordprocessing import OCRProcessor
-from src.recordprocessing.data import ConfigParameter
-from src.recordprocessing.pipeline import VisionAnalyzer, ImageProcessor
-from src.recordprocessing.data import Record
+from src.processors.record_processor import OCRProcessor
+from src.processors.record_processor.data import ConfigParameter, TableConfig
+from src.processors.record_processor.pipeline import VisionAnalyzer, ImageProcessor
+from src.processors.record_processor.pipeline.tables import TableCropper, TableTranscriber
+from src.processors.record_processor.data import Record
 
-from src.recordprocessing.utils import GPUController
+from src.processors.record_processor.utils import GPUController, GLMOCREngine
 
 from logging import getLogger
 logger = getLogger(__name__)
@@ -16,15 +17,27 @@ logger = getLogger(__name__)
 class RecordManager:
 
 
-    def __init__(self, config: ConfigParameter, yolo_model_file_path: str):
+    def __init__(self, config: ConfigParameter, yolo_model_file_path: str, table_config: TableConfig):
 
         self.config = config
-        self.vision_analyzer = VisionAnalyzer(config, yolo_model_file_path)
+        self.table_config = table_config
+
+        # Shared across header detection, line OCR, and table transcription -
+        # loaded once here rather than once per consumer.
+        self.glm_ocr = GLMOCREngine()
+
+        self.vision_analyzer = VisionAnalyzer(config, yolo_model_file_path, self.glm_ocr)
         self.image_processor = ImageProcessor(config)
         self.ocr_processor = None
 
         if not config.skip_ocr:
-            self.ocr_processor = OCRProcessor()
+            self.ocr_processor = OCRProcessor(self.glm_ocr)
+
+        self.table_cropper = None
+        self.table_transcriber = None
+        if not table_config.skip_tables:
+            self.table_cropper = TableCropper(table_config)
+            self.table_transcriber = TableTranscriber(self.glm_ocr, table_config)
 
 
     def build_records(self, image_paths: list[Path]) -> list[Record]:
@@ -108,8 +121,41 @@ class RecordManager:
         logger.info(f"Finished building records. (Count: {len(records)})")
         return records
 
+    def process_tables(self, record: Record) -> list:
+        """ Detects tables (+ captions) on each page of a record, crops them, transcribes
+            them via GLM-OCR, and structures them into schema-constrained JSON via vLLM.
+
+            Args: record (Record): The record to process tables on.
+
+            Returns: List of TableResult, one per detected table across all pages.
+        """
+
+        if self.table_config.skip_tables:
+            return []
+
+        logger.info(f"Processing tables on record. (ID = {record.record_id}, Title = {record.record_title})")
+
+        results = []
+        for idx, image in enumerate(record.images):
+            regions = self.vision_analyzer.get_excluded_regions(image)
+            table_regions = [r for r in regions if r["label"] == self.table_config.table_class_name]
+            caption_regions = [r for r in regions if r["label"] == self.table_config.caption_class_name]
+
+            if not table_regions:
+                continue
+
+            crops = self.table_cropper.build_crops(image, table_regions, caption_regions)
+            for crop in crops:
+                results.append(self.table_transcriber.transcribe(crop, page_index=idx))
+
+            GPUController.clear_gpu_memory()
+
+        logger.info(f"Finished processing tables on record. (ID = {record.record_id}, Tables found = {len(results)})")
+
+        return results
+
     def run_ocr(self, record: Record) -> list:
-        """ Runs OCR via QWEN on all pages within a record.
+        """ Runs OCR via GLM-OCR on all pages within a record.
 
             Args: record (Record): The record to run OCR on.
 

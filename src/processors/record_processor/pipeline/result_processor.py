@@ -3,7 +3,7 @@ import os
 
 from ultralytics.engine.results import Results
 
-from src.recordprocessing.data import MappedPrediction
+from src.processors.record_processor.data import MappedPrediction
 
 class ResultProcessor:
     @staticmethod

@@ -2,29 +2,18 @@ from pathlib import Path
 
 import cv2 as cv
 import numpy as np
-import torch
 from PIL import Image, ImageDraw
 from surya.detection import DetectionPredictor
-from transformers import Qwen3VLForConditionalGeneration, AutoProcessor, BitsAndBytesConfig
 
 
 class OCRProcessor:
-    def __init__(self):
+
+    LINE_OCR_PROMPT = "Transcribe the text in this image exactly as printed. Ignore any run of repeated dots."
+
+    def __init__(self, glm_ocr):
+        """ Args: glm_ocr (GLMOCREngine): Shared GLM-OCR engine, injected so the model is only loaded once. """
         self.detection_predictor = DetectionPredictor()
-        bnb_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_compute_dtype=torch.bfloat16,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_use_double_quant=True,
-        )
-        self.model = Qwen3VLForConditionalGeneration.from_pretrained(
-            "Qwen/Qwen3-VL-4B-Instruct", # 8B
-            dtype="auto",
-            device_map="auto",
-            quantization_config=bnb_config,
-        )
-        self.model.eval()
-        self.processor = AutoProcessor.from_pretrained("Qwen/Qwen3-VL-4B-Instruct") # 8B
+        self.glm_ocr = glm_ocr
 
         # Spine detection parameters
         self.spine_vertical_margin = 200
@@ -307,35 +296,8 @@ class OCRProcessor:
         return predictions[0].bboxes
 
     def ocr_cropped_line(self, cropped_image: Image.Image) -> str:
-        """Run OCR on a cropped text line using Qwen."""
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "image", "image": cropped_image},
-                    {"type": "text", "text": "Transcribe the text. Ignore multiple . in a row."},
-                ],
-            }
-        ]
-
-        inputs = self.processor.apply_chat_template(
-            messages,
-            tokenize=True,
-            add_generation_prompt=True,
-            return_dict=True,
-            return_tensors="pt",
-        )
-        inputs = inputs.to(self.model.device)
-
-        with torch.inference_mode():
-            generated_ids = self.model.generate(**inputs, max_new_tokens=512)
-        generated_ids_trimmed = [
-            out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
-        ]
-        output_text = self.processor.batch_decode(
-            generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
-        )
-        return output_text[0] if output_text else ""
+        """Run OCR on a cropped text line using the shared GLM-OCR engine."""
+        return self.glm_ocr.ocr(cropped_image, prompt=self.LINE_OCR_PROMPT, max_new_tokens=512)
 
     def process_image(self, image_path: Path, padding: int = 5) -> dict:
         """Detect lines and OCR each one from a file path. Returns dict with 'lines' and 'spine_position'."""
@@ -455,9 +417,11 @@ class OCRProcessor:
 
 
 if __name__ == "__main__":
+    from src.processors.record_processor.utils import GLMOCREngine
+
     sample_image = Path("/home/bas/Documents/Visual Code Data/BelHisHAAI/1909 - Testing/EHC_B665_O_2025_1909_III_0015.jp2")
 
-    ocr = OCRProcessor()
+    ocr = OCRProcessor(GLMOCREngine())
 
     # Visualize detected lines
     lines_output = Path("/home/bas/Documents/Visual Code Data/BelHisHAAI/1909 - Testing/detected_lines_visualization.jpg")

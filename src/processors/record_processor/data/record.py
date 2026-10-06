@@ -1,5 +1,5 @@
 from PIL import Image
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 @dataclass
 class Record:
@@ -13,3 +13,4 @@ class Record:
     end_header_bbox: list[float]
     end_header_bbox_meta: dict
     end_header_bbox_page: int
+    tables: list = field(default_factory=list)

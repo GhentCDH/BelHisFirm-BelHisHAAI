@@ -9,3 +9,4 @@ class ConfigParameter:
     spine_margin: int
     skip_ocr: bool
     ocr_excluded_labels: set[str]
+    header_candidate_labels: set[str]

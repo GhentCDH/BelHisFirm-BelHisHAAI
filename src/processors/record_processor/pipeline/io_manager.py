@@ -10,7 +10,7 @@ from logging import getLogger
 from PyPDF2 import PdfWriter, PdfReader
 from reportlab.pdfgen import canvas
 
-from src.recordprocessing.data import Record
+from src.processors.record_processor.data import Record
 
 logger = getLogger(__name__)
 
@@ -51,18 +51,21 @@ class IOManager:
         return image_files
 
     @staticmethod
-    def update_records_csv(record: Record, record_folder_path: Path, output_folder_path: Path) -> None:
+    def update_records_csv(record: Record, record_folder_path: Path, output_folder_path: Path, table_results: list | None = None) -> None:
         """ Update CSV file with current record information.
 
             Args: record (Record): Record to be stored in the CSV file.
             Args: record_folder (Path): Folder path to the record.
             Args: output_folder_path (Path): Folder path to save the CSV file in.
+            Args: table_results (list | None): TableResults found on this record, if any.
 
             Returns: None
         """
 
         csv_path = output_folder_path / "records_index.csv"
         file_exists = csv_path.exists()
+
+        table_results = table_results or []
 
         # Prepare record data
         record_data = {
@@ -75,12 +78,14 @@ class IOManager:
             'end_page': record.end_header_bbox_page,
             'start_bbox': str(record.start_header_bbox),
             'end_bbox': str(record.end_header_bbox),
+            'num_tables': len(table_results),
+            'num_tables_failed': sum(1 for r in table_results if r.error is not None),
         }
 
         # Write or append to CSV
         with open(csv_path, 'a', newline='', encoding='utf-8') as f:
             fieldnames = ['record_id', 'internal_record_number', 'record_title', 'folder_name', 'num_pages',
-                          'start_page', 'end_page', 'start_bbox', 'end_bbox']
+                          'start_page', 'end_page', 'start_bbox', 'end_bbox', 'num_tables', 'num_tables_failed']
             writer = csv.DictWriter(f, fieldnames=fieldnames)
 
             if not file_exists:
@@ -89,6 +94,56 @@ class IOManager:
             writer.writerow(record_data)
 
         logger.info(f"CSV updated: {csv_path}")
+
+    @staticmethod
+    def _table_stems(table_results: list) -> list[str]:
+        """ Builds one filename stem per TableResult (e.g. "page_001_table_00"), kept as its
+            own helper so save_table_outputs and save_record_to_json never compute this
+            independently and risk drifting apart on the same table_results list. """
+
+        per_page_counter: dict[int, int] = {}
+        stems = []
+        for result in table_results:
+            n = per_page_counter.get(result.page_index, 0)
+            per_page_counter[result.page_index] = n + 1
+            stems.append(f"page_{result.page_index + 1:03d}_table_{n:02d}")
+        return stems
+
+    @staticmethod
+    def save_table_outputs(record_folder: Path, table_results: list) -> None:
+        """ Writes each detected table's crop image and structured JSON under the record
+            folder's "tables" subfolder, with a "FAILED" mirror for any that errored.
+
+            Args: record_folder (Path): Path to the record folder.
+            Args: table_results (list): TableResults to save.
+
+            Returns: None
+        """
+
+        if not table_results:
+            return
+
+        tables_dir = record_folder / "tables"
+        tables_dir.mkdir(parents=True, exist_ok=True)
+
+        for result, stem in zip(table_results, IOManager._table_stems(table_results)):
+            if result.error is not None:
+                failed_dir = tables_dir / "FAILED"
+                failed_dir.mkdir(parents=True, exist_ok=True)
+                result.crop_image.save(failed_dir / f"{stem}.png")
+                (failed_dir / f"{stem}.txt").write_text(result.error, encoding="utf-8")
+                continue
+
+            result.crop_image.save(tables_dir / f"{stem}.png")
+            with open(tables_dir / f"{stem}.json", "w", encoding="utf-8") as f:
+                json.dump({
+                    "page": result.page_index + 1,
+                    "bbox": result.bbox,
+                    "plain_text": result.plain_text,
+                    "structured": result.structured,
+                }, f, ensure_ascii=False, indent=2)
+
+        logger.info(f"Saved {len(table_results)} table(s) to {tables_dir}")
 
     @staticmethod
     def generate_pdf_from_record(record_path: Path, ocr_data: list[dict]) -> None:
@@ -213,14 +268,26 @@ class IOManager:
 
 
     @staticmethod
-    def save_record_to_json(record: Record, record_folder: Path, ocr_data: list) -> None:
+    def save_record_to_json(record: Record, record_folder: Path, ocr_data: list, table_results: list | None = None) -> None:
         ocr_json_path = record_folder / "ocr_data.json"
+
+        table_results = table_results or []
+        tables_summary = []
+        for result, stem in zip(table_results, IOManager._table_stems(table_results)):
+            tables_summary.append({
+                "page": result.page_index + 1,
+                "bbox": result.bbox,
+                "crop_file": f"tables/FAILED/{stem}.png" if result.error else f"tables/{stem}.png",
+                "json_file": None if result.error else f"tables/{stem}.json",
+                "error": result.error,
+            })
 
         with open(ocr_json_path, 'w', encoding='utf-8') as f:
             json.dump({
                 "record_id": record.record_id,
                 "record_title": record.record_title,
-                "pages": ocr_data
+                "pages": ocr_data,
+                "tables": tables_summary,
             }, f, ensure_ascii=False, indent=2)
 
         logger.info(f"OCR data saved: {ocr_json_path}")
