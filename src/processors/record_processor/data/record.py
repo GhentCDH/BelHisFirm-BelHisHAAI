@@ -14,3 +14,4 @@ class Record:
     end_header_bbox_meta: dict
     end_header_bbox_page: int
     tables: list = field(default_factory=list)
+    layout: list = field(default_factory=list)  # layout regions per image, parallel to images

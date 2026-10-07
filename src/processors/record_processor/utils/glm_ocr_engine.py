@@ -10,13 +10,19 @@ DEFAULT_MAX_NEW_TOKENS = 2048
 
 
 class GLMOCREngine:
-    """Loads GLM-OCR once and shares it across header detection, line OCR, and table transcription."""
+    """Loads GLM-OCR once and shares it across header detection, line OCR, and table transcription.
+    The model is only loaded on the first ocr() call, so a run that never transcribes does not load it."""
 
     def __init__(self, model_id: str = MODEL_ID):
-        self.processor = AutoProcessor.from_pretrained(model_id)
+        self.model_id = model_id
+        self.processor = None
+        self.model = None
+
+    def _load(self) -> None:
+        self.processor = AutoProcessor.from_pretrained(self.model_id)
         self.model = (
             GlmOcrForConditionalGeneration.from_pretrained(
-                model_id,
+                self.model_id,
                 dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
             )
             .eval()
@@ -26,6 +32,9 @@ class GLMOCREngine:
     def ocr(self, image: Image.Image, prompt: str, max_new_tokens: int = DEFAULT_MAX_NEW_TOKENS) -> str:
         """Transcribe an image crop. GLM-OCR emits <table><tr><td> markup even for
         plain prose, so strip_html is always applied here rather than left to callers."""
+        if self.model is None:
+            self._load()
+
         messages = [{"role": "user", "content": [{"type": "image", "image": image}, {"type": "text", "text": prompt}]}]
         inputs = self.processor.apply_chat_template(
             messages,

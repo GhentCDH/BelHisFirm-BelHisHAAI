@@ -31,60 +31,46 @@ class VisionAnalyzer:
         self.glm_ocr = glm_ocr
 
 
-    def get_excluded_regions(self, image: Image.Image) -> list:
-        """ Get regions to exclude from OCR based on layout detection.
+    def detect_layout(self, image: Image.Image) -> list[dict]:
+        """ All YOLO layout regions on a page.
 
-            Args: config: (ConfigParameter): Configuration object.
-            Args: image (Image.Image): Image to check for excluded regions on.
-
-            Returns: A list of dictionaries with 'bbox' and 'label' keys.
-            Configure excluded labels via the ConfigParameter object.
+            Returns: A list of dictionaries with 'bbox', 'label' and 'confidence' keys.
         """
 
-        excluded_regions = []
+        regions = []
+        for result in self.yolo_model.predict(image, stream=True):
+            for mapped_prediction in ResultProcessor.process_result(result):
+                regions.append({
+                    "bbox": [int(c) for c in mapped_prediction.bbox],
+                    "label": mapped_prediction.label,
+                    "confidence": float(mapped_prediction.confidence),
+                })
+        return regions
 
-        results = self.yolo_model.predict(image, stream=True)
-        for result in results:
-            mapped_predictions = ResultProcessor.process_result(result)
+    def detect_record_headers(self, image: Image.Image, regions: list[dict]) -> list | None:
+        """ Finds the record headers among the layout regions of a given image.
 
-            for mapped_prediction in mapped_predictions:
-                if mapped_prediction.label in self.config.ocr_excluded_labels:
-                    excluded_regions.append({
-                        "bbox": [int(c) for c in mapped_prediction.bbox],
-                        "label": mapped_prediction.label,
-                        "confidence": mapped_prediction.confidence
-                    })
-                    logger.debug(f"Excluding region: {mapped_prediction.label} at {mapped_prediction.bbox}")
-
-        return excluded_regions
-
-    def detect_record_headers(self, image: Image.Image) -> list | None:
-        """ Uses YOLO model to detect record headers in a given image.
-
-        Args: config: (ConfigParameter): Configuration object.
         Args: image (Image.Image): Image to be checked.
+        Args: regions (list[dict]): Layout regions of the image, from detect_layout.
 
         Returns: list of dictionaries for each header with their bounding box and text.
         """
 
-        results = self.yolo_model.predict(image, stream=True)
-
-        if not results:
+        if not regions:
             logger.info(f"No layout predictions..")
             return None
 
         image_width, image_height = image.size
         verified_predictions = []
 
-        for result in results:
-            mapped_predictions = ResultProcessor.process_result(result)
+        for region in regions:
+            mapped_prediction = MappedPrediction(region["bbox"], region["confidence"], region["label"])
 
-            for mapped_prediction in mapped_predictions:
-                if self.is_sus_table(mapped_prediction, image_width, image_height):
-                    new_predictions = self.redetect_region(image, mapped_prediction.bbox, mapped_prediction)
-                    verified_predictions.extend(new_predictions)
-                else:
-                    verified_predictions.append(mapped_prediction)
+            if self.is_sus_table(mapped_prediction, image_width, image_height):
+                new_predictions = self.redetect_region(image, mapped_prediction.bbox, mapped_prediction)
+                verified_predictions.extend(new_predictions)
+            else:
+                verified_predictions.append(mapped_prediction)
 
         record_header_predictions = [prediction for prediction in verified_predictions if HeaderValidator.is_record_header_candidate(prediction, self.config.header_candidate_labels)]
         if not record_header_predictions:

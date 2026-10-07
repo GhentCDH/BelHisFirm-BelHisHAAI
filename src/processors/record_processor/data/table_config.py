@@ -1,4 +1,7 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+# Sub-stages of table processing, in the order they run
+TABLE_STEPS = ["crop", "transcribe", "structure", "parse", "excel"]
 
 @dataclass
 class TableConfig:
@@ -10,3 +13,7 @@ class TableConfig:
     caption_max_gap: int = 40
     caption_min_overlap: float = 0.3
     crop_margin: int = 0
+    steps: list[str] = field(default_factory=lambda: list(TABLE_STEPS))
+    glm_checkpoint: str | None = None   # fine-tuned GLM-OCR checkpoint for table crops, None = the shared base model
+    structuring_concurrency: int = 4    # structuring calls in flight against the vLLM server at once
+    focus_shareholders: bool = False    # only keep an image copy next to the JSON of shareholder registers

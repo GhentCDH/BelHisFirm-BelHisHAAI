@@ -27,7 +27,7 @@ def find_caption_above(table_box, caption_boxes: list, max_gap: int, min_overlap
 
 class TableCropper:
     """Builds in-memory table crops from a page image and its detected
-    Table/Caption regions (as returned by VisionAnalyzer.get_excluded_regions),
+    Table/Caption regions (as returned by VisionAnalyzer.detect_layout),
     extending each table crop to include a directly-above caption, if any."""
 
     def __init__(self, table_config):

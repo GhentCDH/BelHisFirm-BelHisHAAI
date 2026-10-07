@@ -1,7 +1,9 @@
-""" Reads the system clipboard and pastes it into dashboard inputs.
+""" Pastes into dashboard inputs.
 
-Textual's own Ctrl+V only pastes text copied inside the app, so the system clipboard is read here
-through whichever command-line tool the platform provides. """
+There are two ways text gets pasted. The terminal's own paste (Ctrl+Shift+V, or its right-click menu)
+arrives as a paste event and works everywhere, including over SSH. Ctrl+V and right-click inside the
+app arrive as a plain key or click, so the clipboard is read here through whichever command-line tool
+the platform provides. That only works when the app runs on the machine the text was copied on. """
 
 import os
 import shutil
@@ -46,18 +48,10 @@ def clean_path_text(text: str) -> str:
     return first_line.strip().strip('"').strip("'")
 
 
-def paste_from_clipboard(input_widget: Input) -> bool:
-    text = read_system_clipboard()
-    if text is None:
-        input_widget.app.notify(
-            "No clipboard tool found. Install xclip or xsel (X11) or wl-clipboard (Wayland).",
-            severity="warning",
-        )
-        return False
-
+def insert_pasted_text(input_widget: Input, text: str) -> bool:
+    """ Puts the cleaned text at the cursor, replacing the selection if there is one. """
     value = clean_path_text(text)
     if not value:
-        input_widget.app.notify("The clipboard is empty.", severity="warning")
         return False
 
     start, end = input_widget.selection
@@ -65,13 +59,34 @@ def paste_from_clipboard(input_widget: Input) -> bool:
     return True
 
 
+def paste_from_clipboard(input_widget: Input) -> bool:
+    text = read_system_clipboard()
+    if text is None:
+        input_widget.app.notify(
+            "Could not read the clipboard from here. Paste with your terminal's shortcut instead (usually Ctrl+Shift+V).",
+            severity="warning",
+        )
+        return False
+
+    if not insert_pasted_text(input_widget, text):
+        input_widget.app.notify("The clipboard is empty.", severity="warning")
+        return False
+    return True
+
+
 class ClipboardInput(Input):
-    """ Input whose Ctrl+V pastes from the system clipboard. """
+    """ Input that pastes from the terminal's paste as well as from Ctrl+V and right-click. """
 
     BINDINGS = [Binding("ctrl+v", "paste_system_clipboard", "Paste", show=False)]
 
     def action_paste_system_clipboard(self) -> None:
         paste_from_clipboard(self)
+
+    def _on_paste(self, event: events.Paste) -> None:
+        # Replaces Input's own paste handling, which would keep the quotes around a copied path
+        event.prevent_default()
+        event.stop()
+        insert_pasted_text(self, event.text)
 
     def on_mouse_down(self, event: events.MouseDown) -> None:
         if event.button == RIGHT_MOUSE_BUTTON:

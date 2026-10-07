@@ -1,4 +1,4 @@
-""" BelHisHAAI dashboard: runs the record pipeline one stage at a time as a subprocess, streaming its log. """
+""" BelHisHAAI dashboard: runs the enabled record pipeline stages in one subprocess, streaming its log. """
 
 import os
 import subprocess
@@ -17,10 +17,11 @@ from src.belhisapp.clipboard import ClipboardInput
 from src.belhisapp.pipeline_runner import (
     DEFAULT_YOLO_WEIGHTS,
     REPO_ROOT,
-    build_stage_command,
+    build_pipeline_command,
     check_vllm_reachable,
     classify_line,
     format_duration,
+    parse_stage_marker,
 )
 from src.belhisapp.splash import BANNER, BootSplashScreen, HIGHLIGHT_CONFIG, LoopingEffectLabel
 from src.belhisapp.theme import (
@@ -34,8 +35,14 @@ class Stage:
     number: int
     key: str
     label: str
+    parent: "Stage | None" = None  # set on a sub-stage, its key is then "<parent key>.<step>"
     checkbox: Checkbox = field(init=False, default=None)
     status: Label = field(init=False, default=None)
+    started: float = field(init=False, default=0.0)
+
+    @property
+    def step(self) -> str:
+        return self.key.split(".")[-1]
 
 
 class BelhisApp(App):
@@ -94,6 +101,21 @@ class BelhisApp(App):
 
     .stage-label {{
         width: 42;
+    }}
+
+    .substage-row {{
+        height: 1;
+        align: left middle;
+        padding-left: 4;
+    }}
+
+    .substage-label {{
+        width: 38;
+        color: {BORDER};
+    }}
+
+    #focus-shareholders-check {{
+        margin-top: 1;
     }}
 
     .stage-status {{
@@ -201,11 +223,18 @@ class BelhisApp(App):
             Stage(2, "tables", "2/3  TABLE PROCESSING"),
             Stage(3, "ocr", "3/3  OCR + EXPORT"),
         ]
+        tables = self.stages[1]
+        self.table_steps: list[Stage] = [
+            Stage(1, "tables.crop", "2a  TABLE DETECTION", tables),
+            Stage(2, "tables.transcribe", "2b  OCR TRANSCRIPTION", tables),
+            Stage(3, "tables.structure", "2c  STRUCTURING", tables),
+            Stage(4, "tables.parse", "2d  RULE PARSING", tables),
+            Stage(5, "tables.excel", "2e  EXCEL EXPORT", tables),
+        ]
         self._process: subprocess.Popen | None = None
         self._aborted = False
         self._elapsed_timer: Timer | None = None
-        self._stage_start = 0.0
-        self._running_stage: Stage | None = None
+        self._active_stages: list[Stage] = []  # the running stage, followed by its running sub-stage if any
 
     # -- layout --
 
@@ -232,16 +261,28 @@ class BelhisApp(App):
                                 yield Label(stage.label, classes="stage-label")
                                 stage.status = Label("PENDING", classes="stage-status status-pending")
                                 yield stage.status
+                            for step in self.table_steps if stage.key == "tables" else []:
+                                with Horizontal(classes="substage-row"):
+                                    step.checkbox = Checkbox(value=True, id=f"step-{step.step}-check")
+                                    yield step.checkbox
+                                    yield Label(step.label, classes="substage-label")
+                                    step.status = Label("PENDING", classes="stage-status status-pending")
+                                    yield step.status
 
                     with Vertical(classes="panel"):
                         yield Label("ADVANCED", classes="panel-title")
                         yield Label("YOLO weights")
-                        yield Input(value=str(DEFAULT_YOLO_WEIGHTS), id="weights-input")
+                        yield ClipboardInput(value=str(DEFAULT_YOLO_WEIGHTS), id="weights-input")
                         yield Label("vLLM model")
-                        yield Input(value="qwen3.6-35b-nvfp4", id="model-input")
+                        yield ClipboardInput(value="qwen3.6-35b-nvfp4", id="model-input")
                         yield Label("vLLM base URL")
-                        yield Input(value="http://localhost:8000/v1", id="base-url-input")
+                        yield ClipboardInput(value="http://localhost:8000/v1", id="base-url-input")
                         yield Button("TEST CONNECTION", id="test-vllm-btn")
+                        yield Label("GLM-OCR table checkpoint (blank = base model)")
+                        yield ClipboardInput(value="", id="checkpoint-input")
+                        yield Label("Structuring concurrency")
+                        yield ClipboardInput(value="4", id="concurrency-input")
+                        yield Checkbox("Focus shareholders only (image copies)", id="focus-shareholders-check")
 
             with Vertical(id="log-column"):
                 yield RichLog(id="log", wrap=True, highlight=False, markup=False)
@@ -274,6 +315,17 @@ class BelhisApp(App):
 
     def _log_check(self, name: str, ok: bool) -> None:
         self._log(f"[ {'OK' if ok else 'FAIL'} ]  {name}", "ok" if ok else "fail")
+
+    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
+        # The sub-stages only apply while TABLE PROCESSING itself is enabled
+        if event.checkbox is self.stages[1].checkbox:
+            for step in self.table_steps:
+                step.checkbox.disabled = not event.value
+
+    def _selected_table_steps(self) -> list[Stage]:
+        if not self.stages[1].checkbox.value:
+            return []
+        return [step for step in self.table_steps if step.checkbox.value]
 
     # -- run / abort --
 
@@ -312,8 +364,17 @@ class BelhisApp(App):
             self._log(f"[ FAIL ] PAGES directory not found: {pages_value}", "fail")
             return
 
-        for stage in self.stages:
-            if stage.checkbox.value:
+        if self.stages[1].checkbox.value and not self._selected_table_steps():
+            self._log("[ FAIL ] TABLE PROCESSING is enabled without any of its sub-stages.", "fail")
+            return
+        concurrency_value = self.query_one("#concurrency-input", Input).value.strip()
+        if concurrency_value and not (concurrency_value.isdigit() and int(concurrency_value) > 0):
+            self._log(f"[ FAIL ] Structuring concurrency must be a positive number: {concurrency_value}", "fail")
+            return
+
+        selected_steps = self._selected_table_steps()
+        for stage in self.stages + self.table_steps:
+            if stage.checkbox.value and (stage.parent is None or stage in selected_steps):
                 self._set_status(stage, "PENDING", "status-pending")
             else:
                 self._set_status(stage, "SKIPPED", "status-skipped")
@@ -332,8 +393,8 @@ class BelhisApp(App):
                 self._process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 self._process.kill()
-        if self._running_stage is not None:
-            self._set_status(self._running_stage, "ABORTED", "status-aborted")
+        for stage in self._active_stages:
+            self._set_status(stage, "ABORTED", "status-aborted")
 
     def _run_pipeline_worker(self) -> None:
         pipeline_start = time.monotonic()
@@ -347,20 +408,18 @@ class BelhisApp(App):
         vllm_url = self.query_one("#base-url-input", Input).value.strip()
         vllm_model = self.query_one("#model-input", Input).value.strip()
 
+        checkpoint_text = self.query_one("#checkpoint-input", Input).value.strip()
+        checkpoint = Path(checkpoint_text) if checkpoint_text else None
+        concurrency = int(self.query_one("#concurrency-input", Input).value.strip() or "4")
+        focus_shareholders = self.query_one("#focus-shareholders-check", Checkbox).value
+
+        selected = [stage for stage in self.stages if stage.checkbox.value]
+        selected_steps = self._selected_table_steps()
+        stage_by_key = {stage.key: stage for stage in selected + selected_steps}
+
         try:
-            for stage in self.stages:
-                if self._aborted:
-                    break
-                if not stage.checkbox.value:
-                    continue
-
-                self.call_from_thread(self._set_status, stage, "RUNNING 0.0s", "status-running")
-                self.call_from_thread(self._log, f"\n=== {stage.label} ===", "header")
-                self._running_stage = stage
-                self._stage_start = time.monotonic()
-                self._elapsed_timer = self.call_from_thread(self.set_interval, 1.0, lambda s=stage: self._tick(s))
-
-                if stage.key == "tables":
+            if selected:
+                if "tables.structure" in stage_by_key:
                     ok, detail = check_vllm_reachable(vllm_url)
                     if ok:
                         self.call_from_thread(self._log, f"[ OK ]  vLLM reachable at {vllm_url} ({detail})", "ok")
@@ -369,8 +428,16 @@ class BelhisApp(App):
                             self._log, f"[ WARN ]  vLLM may be unreachable at {vllm_url}: {detail} - attempting anyway", "warn"
                         )
 
+                # All stages share one process, so the models are loaded once. The first stage
+                # counts as running from here on, which puts the model loading on its clock.
+                self._begin(selected[0])
+                self._elapsed_timer = self.call_from_thread(self.set_interval, 1.0, self._tick)
+
                 try:
-                    command = build_stage_command(stage.key, output, pages, weights, vllm_url, vllm_model)
+                    command = build_pipeline_command(
+                        [stage.key for stage in selected], output, pages, weights, vllm_url, vllm_model,
+                        [step.step for step in selected_steps], checkpoint, concurrency, focus_shareholders,
+                    )
                     self.call_from_thread(self._log, f"$ {' '.join(command)}", "dim")
                     # Child stdout is a pipe, so Python would block-buffer it without this flag.
                     env = {**os.environ, "PYTHONUNBUFFERED": "1"}
@@ -378,28 +445,33 @@ class BelhisApp(App):
                         command, cwd=REPO_ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
                     )
                     for line in self._process.stdout:
-                        self.call_from_thread(self._log, line.rstrip(), classify_line(line))
+                        marker = parse_stage_marker(line)
+                        if marker is None or marker[0] not in stage_by_key:
+                            self.call_from_thread(self._log, line.rstrip(), classify_line(line))
+                            continue
+
+                        stage, event = stage_by_key[marker[0]], marker[1]
+                        if event == "start":
+                            self._begin(stage)
+                        elif not self._aborted and stage in self._active_stages:
+                            elapsed = time.monotonic() - stage.started
+                            elapsed_by_stage[stage.key] = elapsed
+                            self._active_stages.remove(stage)
+                            self.call_from_thread(self._set_status, stage, f"DONE {format_duration(elapsed)}", "status-done")
                     returncode = self._process.wait()
                 except Exception as e:
-                    self._stop_timer()
                     self.call_from_thread(self._log, f"[ FAIL ] {type(e).__name__}: {e}", "fail")
-                    self.call_from_thread(self._set_status, stage, "FAILED", "status-failed")
+                    returncode = None
                     failed = True
-                    break
 
                 self._stop_timer()
-                elapsed = time.monotonic() - self._stage_start
-                elapsed_by_stage[stage.key] = elapsed
 
-                if self._aborted:
-                    break
-                if returncode != 0:
-                    self.call_from_thread(self._set_status, stage, "FAILED", "status-failed")
-                    self.call_from_thread(self._log, f"[ FAIL ] stage exited with code {returncode}", "fail")
+                if not self._aborted and (failed or returncode != 0):
                     failed = True
-                    break
-
-                self.call_from_thread(self._set_status, stage, f"DONE {format_duration(elapsed)}", "status-done")
+                    if returncode is not None:
+                        self.call_from_thread(self._log, f"[ FAIL ] pipeline exited with code {returncode}", "fail")
+                    for stage in self._active_stages:
+                        self.call_from_thread(self._set_status, stage, "FAILED", "status-failed")
 
             if not failed and not self._aborted:
                 total = time.monotonic() - pipeline_start
@@ -407,20 +479,37 @@ class BelhisApp(App):
                 for stage in self.stages:
                     if stage.key in elapsed_by_stage:
                         self.call_from_thread(self._log, f"{stage.label:<28} {format_duration(elapsed_by_stage[stage.key]):>10}")
+                    for step in self.table_steps:
+                        if step.parent is stage and step.key in elapsed_by_stage:
+                            self.call_from_thread(
+                                self._log, f"    {step.label:<24} {format_duration(elapsed_by_stage[step.key]):>10}", "dim"
+                            )
                 self.call_from_thread(self._log, f"{'TOTAL':<28} {format_duration(total):>10}", "header")
                 self.call_from_thread(self._log, "\nPipeline complete.", "ok")
             elif self._aborted:
                 self.call_from_thread(self._log, "\n=== PIPELINE ABORTED ===", "warn")
         finally:
-            self._running_stage = None
+            self._active_stages = []
             self._process = None
             self.call_from_thread(self._reset_buttons)
 
-    def _tick(self, stage: Stage) -> None:
+    def _begin(self, stage: Stage) -> None:
+        """ Called from the pipeline worker thread when a stage or sub-stage starts running. """
+        if stage in self._active_stages:
+            return
+        stage.started = time.monotonic()
+        self._active_stages.append(stage)
+        self.call_from_thread(self._set_status, stage, "RUNNING 0.0s", "status-running")
+        if stage.parent is None:
+            self.call_from_thread(self._log, f"\n=== {stage.label} ===", "header")
+        else:
+            self.call_from_thread(self._log, f"\n--- {stage.label} ---", "header")
+
+    def _tick(self) -> None:
         if self._aborted:
             return
-        elapsed = time.monotonic() - self._stage_start
-        self._set_status(stage, f"RUNNING {elapsed:.1f}s", "status-running")
+        for stage in list(self._active_stages):
+            self._set_status(stage, f"RUNNING {time.monotonic() - stage.started:.1f}s", "status-running")
 
     def _stop_timer(self) -> None:
         if self._elapsed_timer is not None:

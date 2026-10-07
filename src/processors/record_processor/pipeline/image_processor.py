@@ -12,6 +12,9 @@ from src.processors.record_processor.data import ConfigParameter
 
 class ImageProcessor:
 
+    # A region that is partly masked is kept when at least this share of it stays visible
+    MIN_VISIBLE_SHARE = 0.2
+
     def __init__(self, config: ConfigParameter):
         self.config = config
 
@@ -104,27 +107,69 @@ class ImageProcessor:
 
         masked = image.copy()
         draw = ImageDraw.Draw(masked)
-        w, h = masked.size
+
+        masked_rectangles, _ = cls.mask_layout(masked.size, header_bbox, meta, direction)
+        for rectangle in masked_rectangles:
+            draw.rectangle(rectangle, fill="white")
+
+        return masked
+
+    @staticmethod
+    def mask_layout(image_size: tuple, header_bbox: list, meta: dict, direction: str) -> tuple[list, list]:
+        """ How mask_image divides a page for a header, see mask_image for the arguments.
+
+            Returns: The rectangles [x1, y1, x2, y2] that get masked, and the rectangles that stay visible.
+        """
+
+        w, h = image_size
         header_y = header_bbox[1]
         side = meta.get("side", "UNKNOWN")
         halfline = meta.get("halfline")
 
         if halfline is None or side in ("MIDDLE", "UNKNOWN"):
-            if direction == "above":
-                draw.rectangle([0, 0, w, header_y], fill="white")
-            else:
-                draw.rectangle([0, header_y, w, h], fill="white")
-        elif side == "LEFT":
-            if direction == "above":
-                draw.rectangle([0, 0, halfline, header_y], fill="white")
-            else:
-                draw.rectangle([0, header_y, halfline, h], fill="white")
-                draw.rectangle([halfline, 0, w, h], fill="white")
-        elif side == "RIGHT":
-            if direction == "above":
-                draw.rectangle([0, 0, halfline, h], fill="white")
-                draw.rectangle([halfline, 0, w, header_y], fill="white")
-            else:
-                draw.rectangle([halfline, header_y, w, h], fill="white")
+            above, below = [0, 0, w, header_y], [0, header_y, w, h]
+            return ([above], [below]) if direction == "above" else ([below], [above])
 
-        return masked
+        left_above, left_below = [0, 0, halfline, header_y], [0, header_y, halfline, h]
+        right_above, right_below = [halfline, 0, w, header_y], [halfline, header_y, w, h]
+        left, right = [0, 0, halfline, h], [halfline, 0, w, h]
+
+        if side == "LEFT":
+            if direction == "above":
+                return [left_above], [left_below, right]
+            return [left_below, right], [left_above]
+
+        if direction == "above":
+            return [left, right_above], [right_below]
+        return [right_below], [left, right_above]
+
+    @classmethod
+    def mask_regions(cls, regions: list[dict], image_size: tuple, header_bbox: list, meta: dict, direction: str) -> list[dict]:
+        """ The layout regions that are left after mask_image with the same arguments, so the
+            layout of a masked page does not need a second detection.
+
+            Returns: The regions cut down to their visible part, without the ones that are (almost) fully masked.
+        """
+
+        masked_rectangles, visible_rectangles = cls.mask_layout(image_size, header_bbox, meta, direction)
+
+        def intersection(a: list, b: list) -> list | None:
+            x1, y1, x2, y2 = max(a[0], b[0]), max(a[1], b[1]), min(a[2], b[2]), min(a[3], b[3])
+            return [x1, y1, x2, y2] if x2 > x1 and y2 > y1 else None
+
+        def area(box: list) -> int:
+            return (box[2] - box[0]) * (box[3] - box[1])
+
+        visible_regions = []
+        for region in regions:
+            bbox = region["bbox"]
+            if not any(intersection(bbox, rectangle) for rectangle in masked_rectangles):
+                visible_regions.append(region)
+                continue
+
+            for rectangle in visible_rectangles:
+                visible_part = intersection(bbox, rectangle)
+                if visible_part and area(visible_part) >= cls.MIN_VISIBLE_SHARE * area(bbox):
+                    visible_regions.append({**region, "bbox": [int(c) for c in visible_part]})
+
+        return visible_regions

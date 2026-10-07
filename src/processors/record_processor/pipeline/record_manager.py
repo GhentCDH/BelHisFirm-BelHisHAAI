@@ -6,7 +6,7 @@ from PIL import Image
 from src.processors.record_processor import OCRProcessor
 from src.processors.record_processor.data import ConfigParameter, TableConfig
 from src.processors.record_processor.pipeline import VisionAnalyzer, ImageProcessor
-from src.processors.record_processor.pipeline.tables import TableCropper, TableTranscriber
+from src.processors.record_processor.pipeline.tables import TablePipeline
 from src.processors.record_processor.data import Record
 
 from src.processors.record_processor.utils import GPUController, GLMOCREngine
@@ -33,11 +33,11 @@ class RecordManager:
         if not config.skip_ocr:
             self.ocr_processor = OCRProcessor(self.glm_ocr)
 
-        self.table_cropper = None
-        self.table_transcriber = None
+        self.table_pipeline = None
         if not table_config.skip_tables:
-            self.table_cropper = TableCropper(table_config)
-            self.table_transcriber = TableTranscriber(self.glm_ocr, table_config)
+            # A checkpoint fine-tuned on table crops only replaces the engine for the tables
+            table_glm_ocr = GLMOCREngine(table_config.glm_checkpoint) if table_config.glm_checkpoint else self.glm_ocr
+            self.table_pipeline = TablePipeline(table_config, table_glm_ocr)
 
 
     def build_records(self, image_paths: list[Path]) -> list[Record]:
@@ -67,30 +67,47 @@ class RecordManager:
                 logger.error(f"Failed to open image {image_path.name}: {e}")
                 continue
 
+            # Detected once per page, record pages take over the regions that are left after masking
+            regions = self.vision_analyzer.detect_layout(image)
+
             if idx == 0:
                 current_record = self.create_new_record(image, record_id, "TITLE_PAGES")
+                current_record.layout.append(regions)
                 record_start_page_idx = idx
                 record_id += 1
                 continue
 
-            headers_on_page = self.vision_analyzer.detect_record_headers(image)
+            headers_on_page = self.vision_analyzer.detect_record_headers(image, regions)
 
             if not headers_on_page:
                 if current_record:
                     current_record.images.append(image)
+                    current_record.layout.append(regions)
                 continue
 
-            for header in headers_on_page:
+            # Detection order is arbitrary, records have to be split in reading order:
+            # down the left column (or the full width), then down the right column
+            headers_in_reading_order = sorted(
+                ((header, self.image_processor.which_half_is_bbox_on(header["bbox"], image)) for header in headers_on_page),
+                key=lambda item: (item[1]["side"] == "RIGHT", item[0]["bbox"][1]),
+            )
+
+            for header, header_meta in headers_in_reading_order:
                 bbox = header["bbox"]
-                header_meta = self.image_processor.which_half_is_bbox_on(bbox, image)
 
                 if current_record:
                     if idx != record_start_page_idx:
                         ending_image = self.image_processor.mask_image(image, bbox, header_meta, "below")
                         current_record.images.append(ending_image)
+                        current_record.layout.append(
+                            self.image_processor.mask_regions(regions, image.size, bbox, header_meta, "below")
+                        )
                     else:
                         current_record.images[-1] = self.image_processor.mask_image(
                             current_record.images[-1], bbox, header_meta, "below"
+                        )
+                        current_record.layout[-1] = self.image_processor.mask_regions(
+                            current_record.layout[-1], image.size, bbox, header_meta, "below"
                         )
 
                     current_record.end_header_bbox = bbox
@@ -107,6 +124,7 @@ class RecordManager:
                 # New record starts with the above-masked image
                 masked_start = self.image_processor.mask_image(image, bbox, header_meta, "above")
                 current_record = self.create_new_record(masked_start, record_id, title, internal_number)
+                current_record.layout.append(self.image_processor.mask_regions(regions, image.size, bbox, header_meta, "above"))
                 current_record.start_header_bbox = bbox
                 current_record.start_header_bbox_meta = header_meta
                 current_record.start_header_bbox_page = idx
@@ -121,66 +139,44 @@ class RecordManager:
         logger.info(f"Finished building records. (Count: {len(records)})")
         return records
 
-    def process_tables(self, record: Record) -> list:
-        """ Detects tables (+ captions) on each page of a record, crops them, transcribes
-            them via GLM-OCR, and structures them into schema-constrained JSON via vLLM.
+    def detect_layout(self, record: Record) -> list[list[dict]]:
+        """ Runs layout detection on every page of a record.
 
-            Args: record (Record): The record to process tables on.
+            Args: record (Record): The record to detect the layout on.
 
-            Returns: List of TableResult, one per detected table across all pages.
+            Returns: List with the layout regions ('bbox', 'label', 'confidence') for every page.
         """
 
-        if self.table_config.skip_tables:
-            return []
+        logger.info(f"Detecting layout on record. (ID = {record.record_id}, Pages = {len(record.images)})")
 
-        logger.info(f"Processing tables on record. (ID = {record.record_id}, Title = {record.record_title})")
+        layout = []
+        for image in record.images:
+            layout.append(self.vision_analyzer.detect_layout(image))
 
-        results = []
-        for idx, image in enumerate(record.images):
-            regions = self.vision_analyzer.get_excluded_regions(image)
-            table_regions = [r for r in regions if r["label"] == self.table_config.table_class_name]
-            caption_regions = [r for r in regions if r["label"] == self.table_config.caption_class_name]
+        return layout
 
-            if not table_regions:
-                continue
-
-            crops = self.table_cropper.build_crops(image, table_regions, caption_regions)
-            for crop in crops:
-                results.append(self.table_transcriber.transcribe(crop, page_index=idx))
-
-            GPUController.clear_gpu_memory()
-
-        logger.info(f"Finished processing tables on record. (ID = {record.record_id}, Tables found = {len(results)})")
-
-        return results
-
-    def run_ocr(self, record: Record) -> list:
-        """ Runs OCR via GLM-OCR on all pages within a record.
+    def run_ocr(self, record: Record, layout: list[list[dict]]) -> list:
+        """ Transcribes every text block on every page of a record with GLM-OCR.
 
             Args: record (Record): The record to run OCR on.
+            Args: layout (list[list[dict]]): Layout regions for every page, from detect_layout.
 
-            Returns: List with parse strings for every page.
+            Returns: List with the OCR result (blocks and spine position) for every page.
         """
 
         logger.info(f"Running OCR on record. (ID = {record.record_id}, Title = {record.record_title})")
 
         ocr_data = []
 
-        # Run OCR on all images in the record and collect string results
         for idx, image in enumerate(record.images):
-            # Run OCR on this page
             logger.info(f"Running OCR on record page. (Page {idx + 1}/{len(record.images)})")
 
-            # Get excluded regions (tables, figures, etc.) from layout detection
-            excluded_regions = self.vision_analyzer.get_excluded_regions(image)
+            regions = layout[idx]
+            text_regions = [r for r in regions if r["label"] not in self.config.ocr_excluded_labels]
+            logger.info(f"OCR on {len(text_regions)} text blocks, skipping {len(regions) - len(text_regions)} non-text regions")
 
-            if excluded_regions:
-                logger.info(f"Excluding {len(excluded_regions)} regions from OCR: {[r['label'] for r in excluded_regions]}")
+            ocr_data.append(self.ocr_processor.process_text_blocks(image, text_regions))
 
-            page_ocr = self.ocr_processor.process_pil_image(image, excluded_regions=excluded_regions)
-            ocr_data.append(page_ocr)
-
-            # Clear GPU memory after each page to prevent OOM
             GPUController.clear_gpu_memory()
 
         logger.info(f"Finished OCR on record. (ID = {record.record_id}, Title = {record.record_title})")
