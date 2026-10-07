@@ -1,5 +1,6 @@
 import re
 
+from collections.abc import Iterator
 from pathlib import Path
 from PIL import Image
 
@@ -42,17 +43,28 @@ class RecordManager:
 
     def build_records(self, image_paths: list[Path]) -> list[Record]:
         """ Builds a list of records from a list of paths, the records are split by headers within the images.
+            Keeps every page image in memory, use iter_records for more than a handful of pages.
 
             Args: image_paths (list[Path]): List of paths to images.
             Returns: List of newly built records.
         """
+        return list(self.iter_records(image_paths))
+
+    def iter_records(self, image_paths: list[Path]) -> Iterator[Record]:
+        """ Splits the images into records by the headers found on them, and yields each record as soon
+            as it is complete. A page image is 50+ MB in memory, so the caller should save a record and
+            let go of it before asking for the next one.
+
+            Args: image_paths (list[Path]): List of paths to images.
+            Returns: Iterator over the newly built records.
+        """
         logger.info("Building records...")
 
-        records = []
+        record_count = 0
 
         if not image_paths:
             logger.warning("No images provided to build records.")
-            return records
+            return
 
         current_record = None
         record_id = 0
@@ -64,7 +76,7 @@ class RecordManager:
                 if image.mode != 'RGB':
                     image = image.convert('RGB')
             except Exception as e:
-                logger.error(f"Failed to open image {image_path.name}: {e}")
+                logger.error(f"Failed to open image {image_path}, the page is left out: {type(e).__name__}: {e}", exc_info=True)
                 continue
 
             # Detected once per page, record pages take over the regions that are left after masking
@@ -113,7 +125,8 @@ class RecordManager:
                     current_record.end_header_bbox = bbox
                     current_record.end_header_bbox_meta = header_meta
                     current_record.end_header_bbox_page = idx
-                    records.append(current_record)
+                    record_count += 1
+                    yield current_record
 
                 # Parse title and internal number
                 text = header["text"]
@@ -133,11 +146,11 @@ class RecordManager:
                 record_id += 1
 
         if current_record:
-            records.append(current_record)
+            record_count += 1
+            yield current_record
 
         GPUController.clear_gpu_memory()
-        logger.info(f"Finished building records. (Count: {len(records)})")
-        return records
+        logger.info(f"Finished building records. (Count: {record_count})")
 
     def detect_layout(self, record: Record) -> list[list[dict]]:
         """ Runs layout detection on every page of a record.

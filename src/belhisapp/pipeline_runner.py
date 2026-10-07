@@ -1,6 +1,7 @@
 """ Builds the pipeline subprocess command and checks what the dashboard needs before a run. """
 
 import re
+import signal
 import sys
 from pathlib import Path
 
@@ -14,6 +15,11 @@ CLI_MODULE = "src.processors.record_processor.cli"
 # Printed by the CLI around each stage (announce_stage in cli.py). Matched here by format
 # rather than imported, since importing the CLI would load torch into the dashboard.
 STAGE_MARKER = re.compile(r"^\[stage:([\w.]+)\] (start|done)$")
+
+
+ERROR_PREFIX = "[ ERROR ]"
+ERROR_CONTINUATION = "[ ERROR ] |"  # a further line of the same error (its traceback)
+WARNING_PREFIX = "[ WARN ]"
 
 
 def build_pipeline_command(stages: list[str], output: Path, pages: Path | None, weights: Path, vllm_url: str, vllm_model: str,
@@ -50,7 +56,12 @@ def check_vllm_reachable(base_url: str, timeout: float = 3.0) -> tuple[bool, str
 
 
 def classify_line(line: str) -> str | None:
-    """ Picks a log color for one line of stage output. """
+    """ Picks a log color for one line of stage output. "error" is a line of an error the pipeline
+        logged itself (LevelPrefixFormatter in cli.py), "fail" only looks like trouble. """
+    if line.startswith(ERROR_PREFIX):
+        return "error"
+    if line.startswith(WARNING_PREFIX):
+        return "warn"
     lowered = line.lower()
     if "traceback" in lowered or "error" in lowered or "failed" in lowered:
         return "fail"
@@ -59,6 +70,23 @@ def classify_line(line: str) -> str | None:
     if "complete" in lowered or "finished" in lowered:
         return "ok"
     return None
+
+
+def describe_exit(returncode: int) -> str:
+    """ Why the pipeline process ended, for a non-zero exit. A killed process cannot log a reason itself. """
+    if returncode >= 0:
+        return f"The pipeline process stopped with exit code {returncode} before finishing."
+
+    try:
+        name = signal.Signals(-returncode).name
+    except ValueError:
+        name = f"signal {-returncode}"
+
+    reason = f"The pipeline process was killed by {name} before finishing, so it could not log why."
+    if -returncode == signal.SIGKILL:
+        reason += (" This is almost always the system running out of memory:"
+                   " check with `journalctl -k | grep -i 'out of memory'`.")
+    return reason
 
 
 def format_duration(seconds: float) -> str:

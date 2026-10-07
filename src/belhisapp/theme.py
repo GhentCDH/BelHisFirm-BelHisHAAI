@@ -29,6 +29,7 @@ LOG_STYLES = {
     "header": f"bold {ACCENT}",
     "ok": f"bold {DONE}",
     "fail": f"bold {FAILED}",
+    "error": f"bold {FAILED}",
     "warn": f"bold {ABORTED}",
     "dim": DIM,
 }

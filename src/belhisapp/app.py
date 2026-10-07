@@ -16,10 +16,12 @@ from textual.widgets import Button, Checkbox, Footer, Input, Label, RichLog, Sta
 from src.belhisapp.clipboard import ClipboardInput
 from src.belhisapp.pipeline_runner import (
     DEFAULT_YOLO_WEIGHTS,
+    ERROR_CONTINUATION,
     REPO_ROOT,
     build_pipeline_command,
     check_vllm_reachable,
     classify_line,
+    describe_exit,
     format_duration,
     parse_stage_marker,
 )
@@ -39,6 +41,7 @@ class Stage:
     checkbox: Checkbox = field(init=False, default=None)
     status: Label = field(init=False, default=None)
     started: float = field(init=False, default=0.0)
+    errors: int = field(init=False, default=0)
 
     @property
     def step(self) -> str:
@@ -209,6 +212,28 @@ class BelhisApp(App):
     Label {{
         color: {BASE};
     }}
+
+    #alarm {{
+        display: none;
+        height: 3;
+        content-align: center middle;
+        text-style: bold;
+        background: {FAILED};
+        color: {DARK};
+    }}
+
+    /* An error in the run turns the frames red until the next run */
+    .has-errors #alarm {{
+        display: block;
+    }}
+
+    .has-errors #log, .has-errors .panel {{
+        border: double {FAILED};
+    }}
+
+    .has-errors .panel-title {{
+        color: {FAILED};
+    }}
     """
 
     BINDINGS = [("q", "quit", "Quit")]
@@ -235,6 +260,8 @@ class BelhisApp(App):
         self._aborted = False
         self._elapsed_timer: Timer | None = None
         self._active_stages: list[Stage] = []  # the running stage, followed by its running sub-stage if any
+        self._errors: list[tuple[str, list[str]]] = []  # (where it happened, lines of the error) per error of this run
+        self._in_error = False  # whether the previous output line belonged to an error
 
     # -- layout --
 
@@ -281,10 +308,11 @@ class BelhisApp(App):
                         yield Label("GLM-OCR table checkpoint (blank = base model)")
                         yield ClipboardInput(value="", id="checkpoint-input")
                         yield Label("Structuring concurrency")
-                        yield ClipboardInput(value="4", id="concurrency-input")
+                        yield ClipboardInput(value="8", id="concurrency-input")
                         yield Checkbox("Focus shareholders only (image copies)", id="focus-shareholders-check")
 
             with Vertical(id="log-column"):
+                yield Static("", id="alarm")
                 yield RichLog(id="log", wrap=True, highlight=False, markup=False)
                 with Horizontal(classes="button-row"):
                     yield Button("RUN PIPELINE", id="run-btn", variant="success")
@@ -380,6 +408,11 @@ class BelhisApp(App):
                 self._set_status(stage, "SKIPPED", "status-skipped")
 
         self._aborted = False
+        self._errors = []
+        self._in_error = False
+        for stage in self.stages + self.table_steps:
+            stage.errors = 0
+        self.screen.remove_class("has-errors")
         self.query_one("#run-btn", Button).disabled = True
         self.query_one("#abort-btn", Button).disabled = False
         self._log("\n=== PIPELINE START ===", "header")
@@ -410,7 +443,7 @@ class BelhisApp(App):
 
         checkpoint_text = self.query_one("#checkpoint-input", Input).value.strip()
         checkpoint = Path(checkpoint_text) if checkpoint_text else None
-        concurrency = int(self.query_one("#concurrency-input", Input).value.strip() or "4")
+        concurrency = int(self.query_one("#concurrency-input", Input).value.strip() or "8")
         focus_shareholders = self.query_one("#focus-shareholders-check", Checkbox).value
 
         selected = [stage for stage in self.stages if stage.checkbox.value]
@@ -447,7 +480,9 @@ class BelhisApp(App):
                     for line in self._process.stdout:
                         marker = parse_stage_marker(line)
                         if marker is None or marker[0] not in stage_by_key:
-                            self.call_from_thread(self._log, line.rstrip(), classify_line(line))
+                            style = classify_line(line)
+                            self._track_error(line.rstrip(), style == "error")
+                            self.call_from_thread(self._log, line.rstrip(), style)
                             continue
 
                         stage, event = stage_by_key[marker[0]], marker[1]
@@ -457,7 +492,12 @@ class BelhisApp(App):
                             elapsed = time.monotonic() - stage.started
                             elapsed_by_stage[stage.key] = elapsed
                             self._active_stages.remove(stage)
-                            self.call_from_thread(self._set_status, stage, f"DONE {format_duration(elapsed)}", "status-done")
+                            if stage.errors:
+                                self.call_from_thread(
+                                    self._set_status, stage, f"⚠ {stage.errors} ERR  DONE {format_duration(elapsed)}", "status-failed"
+                                )
+                            else:
+                                self.call_from_thread(self._set_status, stage, f"DONE {format_duration(elapsed)}", "status-done")
                     returncode = self._process.wait()
                 except Exception as e:
                     self.call_from_thread(self._log, f"[ FAIL ] {type(e).__name__}: {e}", "fail")
@@ -469,7 +509,9 @@ class BelhisApp(App):
                 if not self._aborted and (failed or returncode != 0):
                     failed = True
                     if returncode is not None:
-                        self.call_from_thread(self._log, f"[ FAIL ] pipeline exited with code {returncode}", "fail")
+                        reason = describe_exit(returncode)
+                        self._track_error(reason, True)
+                        self.call_from_thread(self._log, f"[ FAIL ] {reason}", "fail")
                     for stage in self._active_stages:
                         self.call_from_thread(self._set_status, stage, "FAILED", "status-failed")
 
@@ -485,7 +527,11 @@ class BelhisApp(App):
                                 self._log, f"    {step.label:<24} {format_duration(elapsed_by_stage[step.key]):>10}", "dim"
                             )
                 self.call_from_thread(self._log, f"{'TOTAL':<28} {format_duration(total):>10}", "header")
-                self.call_from_thread(self._log, "\nPipeline complete.", "ok")
+                if not self._errors:
+                    self.call_from_thread(self._log, "\nPipeline complete.", "ok")
+
+            if self._errors and not self._aborted:
+                self.call_from_thread(self._log_error_summary, failed)
             elif self._aborted:
                 self.call_from_thread(self._log, "\n=== PIPELINE ABORTED ===", "warn")
         finally:
@@ -504,6 +550,43 @@ class BelhisApp(App):
             self.call_from_thread(self._log, f"\n=== {stage.label} ===", "header")
         else:
             self.call_from_thread(self._log, f"\n--- {stage.label} ---", "header")
+
+    def _track_error(self, line: str, is_error: bool) -> None:
+        """ Called from the pipeline worker thread for every output line. An error is its first line plus
+            the continuation lines after it (its traceback), every new error updates the alarm. """
+        if not is_error:
+            self._in_error = False
+            return
+
+        if self._in_error and line.startswith(ERROR_CONTINUATION):
+            self._errors[-1][1].append(line)
+            return
+
+        self._in_error = True
+        where = " / ".join(stage.label.strip() for stage in self._active_stages) or "PIPELINE"
+        self._errors.append((where, [line]))
+        for stage in self._active_stages:
+            stage.errors += 1
+        self.call_from_thread(self._raise_alarm, len(self._errors))
+
+    def _raise_alarm(self, count: int) -> None:
+        self.query_one("#alarm", Static).update(
+            f"⚠  {count} ERROR{'S' if count != 1 else ''} IN THIS RUN  ⚠\nfull details in the log and in the summary at the end"
+        )
+        if not self.screen.has_class("has-errors"):
+            self.screen.add_class("has-errors")
+            self.notify("The pipeline reported an error, see the log.", title="ERROR", severity="error", timeout=10)
+
+    def _log_error_summary(self, failed: bool) -> None:
+        """ Repeats every error of the run in full at the end of the log, so none is lost in the output above. """
+        count = len(self._errors)
+        self._log(f"\n=== ⚠ {count} ERROR{'S' if count != 1 else ''} ===", "error")
+        for number, (where, lines) in enumerate(self._errors, start=1):
+            self._log(f"\n--- error {number}/{count} during {where} ---", "error")
+            for line in lines:
+                self._log(line, "error")
+        outcome = "Pipeline FAILED" if failed else "Pipeline finished, but not everything went well"
+        self._log(f"\n{outcome}: {count} error{'s' if count != 1 else ''}, listed above.", "error")
 
     def _tick(self) -> None:
         if self._aborted:

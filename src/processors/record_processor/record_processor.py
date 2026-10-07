@@ -16,7 +16,7 @@ class RecordProcessor:
                  yolo_model_path: str = "model/best.pt",
                  vllm_base_url: str = "http://localhost:8000/v1", vllm_model: str = "qwen3.6-35b-nvfp4",
                  table_steps: list[str] | None = None, glm_checkpoint: str | None = None,
-                 structuring_concurrency: int = 4, focus_shareholders: bool = False):
+                 structuring_concurrency: int = 8, focus_shareholders: bool = False):
 
         # Labels to exclude from OCR output (add more labels here as needed)
         ocr_excluded_labels = {"Table", "Picture", "Formula", "Caption"}
@@ -48,10 +48,12 @@ class RecordProcessor:
         """ Stage 1: split pages into records and write each record's page images and metadata. """
 
         image_paths = IOManager.collect_image_files(input_path)
-        records = self.record_manager.build_records(image_paths)
         fingerprint = IOManager.weights_fingerprint(self.yolo_model_path)
+        record_count = 0
 
-        for record in records:
+        # Saved one by one as they are completed, all pages of a volume do not fit in memory at once
+        for record in self.record_manager.iter_records(image_paths):
+            record_count += 1
             record_folder = output_path / IOManager.generate_folder_name(record)
             IOManager.save_record_images(record, record_folder)
             IOManager.save_record_meta(record, record_folder)
@@ -59,7 +61,7 @@ class RecordProcessor:
             IOManager.save_layout(record_folder, record.layout, fingerprint)
 
         GPUController.clear_gpu_memory()
-        logger.info(f"Records stage finished. (Count: {len(records)})")
+        logger.info(f"Records stage finished. (Count: {record_count})")
 
     def _layout_for(self, record, record_folder: Path) -> list[list[dict]]:
         """ Layout regions for every page of a record, as saved by the records stage. Only detected here for
@@ -92,13 +94,18 @@ class RecordProcessor:
 
             if step == "crop":
                 found = 0
-                for record_folder in record_folders:
+                for number, record_folder in enumerate(record_folders, start=1):
                     record = IOManager.load_record(record_folder)
-                    found += table_pipeline.crop(record, record_folder, self._layout_for(record, record_folder))
+                    tables = table_pipeline.crop(record, record_folder, self._layout_for(record, record_folder))
+                    logger.info(
+                        f"[{number}/{len(record_folders)}] {record_folder.name}: "
+                        f"{tables} table(s) on {len(record.images)} page(s)"
+                    )
+                    found += tables
                 logger.info(f"Table detection finished. (Tables found: {found})")
 
             elif step == "transcribe":
-                transcribed = sum(table_pipeline.transcribe(record_folder) for record_folder in record_folders)
+                transcribed = table_pipeline.transcribe(record_folders)
                 GPUController.clear_gpu_memory()
                 logger.info(f"Table transcription finished. (Tables transcribed: {transcribed})")
 
@@ -109,11 +116,11 @@ class RecordProcessor:
                     logger.error(f"{failed} table(s) failed structuring, see the FAILED folder of their record.")
 
             elif step == "parse":
-                parsed = sum(table_pipeline.parse(record_folder) for record_folder in record_folders)
+                parsed = table_pipeline.parse(record_folders)
                 logger.info(f"Rule parsing finished. (Shareholder registers parsed: {parsed})")
 
             elif step == "excel":
-                exported = sum(table_pipeline.excel(record_folder) for record_folder in record_folders)
+                exported = table_pipeline.excel(record_folders)
                 logger.info(f"Excel export finished. (Tables exported: {exported})")
 
             if on_step:

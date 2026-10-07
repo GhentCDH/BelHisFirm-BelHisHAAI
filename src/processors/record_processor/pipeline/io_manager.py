@@ -261,7 +261,7 @@ class IOManager:
                                 c.drawString(0, 0, text)
                                 c.restoreState()
                             except Exception as text_err:
-                                logger.warning(f"Failed to add text '{line_text[:50]}...' to PDF: {text_err}")
+                                logger.warning(f"Failed to add text '{line_text}' to the PDF text layer of {img_path}: {type(text_err).__name__}: {text_err}", exc_info=True)
 
                 # Without this a page with no text gets no page at all in the text layer
                 c.showPage()
@@ -275,7 +275,7 @@ class IOManager:
                 pdf_writer.add_page(text_page)
 
             except Exception as e:
-                logger.error(f"Failed to process {img_path.name} for PDF: {e}")
+                logger.error(f"Failed to add {img_path} to the PDF, the page is left out: {type(e).__name__}: {e}", exc_info=True)
 
         with open(pdf_path, 'wb') as f:
             pdf_writer.write(f)

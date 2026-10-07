@@ -41,7 +41,7 @@ def _get_geoparser():
             )
         except Exception as e:
             _geoparser_failed = True
-            logger.warning(f"Address parsing unavailable, addresses are left as plain text: {type(e).__name__}: {e}")
+            logger.warning(f"Address parsing unavailable, addresses are left as plain text: {type(e).__name__}: {e}", exc_info=True)
     return _geoparser
 
 

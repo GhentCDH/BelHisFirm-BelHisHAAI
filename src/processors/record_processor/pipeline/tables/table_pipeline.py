@@ -13,6 +13,7 @@ sub-stages skip tables they already have an output for.
 
 import json
 import shutil
+import time
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from logging import getLogger
@@ -104,26 +105,35 @@ class TablePipeline:
         self.save_index(record_folder)
         return len(crops)
 
-    def transcribe(self, record_folder: Path) -> int:
+    def transcribe(self, record_folders: list[Path]) -> int:
         """ Transcribes every crop without a transcription yet via GLM-OCR.
 
             Returns: Number of crops transcribed.
         """
 
-        transcribed = 0
-        for crop in self.load_crops(record_folder):
-            text_path = self.transcriptions_dir(record_folder) / f"{crop['stem']}.txt"
-            if text_path.exists():
-                continue
+        todo, total = [], 0
+        for record_folder in record_folders:
+            for crop in self.load_crops(record_folder):
+                total += 1
+                text_path = self.transcriptions_dir(record_folder) / f"{crop['stem']}.txt"
+                if not text_path.exists():
+                    todo.append((record_folder, crop, text_path))
 
+        logger.info(f"{len(todo)} table(s) to transcribe, {total - len(todo)} already done.")
+
+        for number, (record_folder, crop, text_path) in enumerate(todo, start=1):
+            start = time.monotonic()
             image = Image.open(self.crops_dir(record_folder) / f"{crop['stem']}.png").convert("RGB")
             text = self.glm_ocr.ocr(image, prompt=TABLE_OCR_PROMPT)
 
             text_path.parent.mkdir(parents=True, exist_ok=True)
             text_path.write_text(text + "\n", encoding="utf-8")
-            transcribed += 1
+            logger.info(
+                f"[{number}/{len(todo)}] Transcribed {self._name(record_folder, crop)} "
+                f"({len(text)} characters, {time.monotonic() - start:.1f}s)"
+            )
 
-        return transcribed
+        return len(todo)
 
     def structure(self, record_folders: list[Path]) -> tuple[int, int]:
         """ Structures every transcription without a JSON yet via vLLM, several at once.
@@ -133,17 +143,20 @@ class TablePipeline:
 
         todo = []
         failed = 0
+        already_done = 0
         for record_folder in record_folders:
             for crop in self.load_crops(record_folder):
                 json_path = self.tables_dir(record_folder) / f"{crop['stem']}.json"
                 if json_path.exists():
                     structured = json.loads(json_path.read_text(encoding="utf-8")).get("structured") or {}
                     self._place_image_copy(record_folder, crop, structured)
+                    already_done += 1
                     continue
 
                 text_path = self.transcriptions_dir(record_folder) / f"{crop['stem']}.txt"
                 if not text_path.exists():
                     self._mark_failed(record_folder, crop, "No transcription found - run the OCR TRANSCRIPTION sub-stage first.")
+                    logger.error(f"No transcription found for {self._name(record_folder, crop)}, run the OCR TRANSCRIPTION sub-stage first.")
                     failed += 1
                     continue
 
@@ -152,7 +165,14 @@ class TablePipeline:
         if todo and self._client is None:
             self._client = make_client(self.table_config.vllm_base_url)
 
+        logger.info(
+            f"{len(todo)} table(s) to structure, {already_done} already done. "
+            f"(Up to {max(1, self.table_config.structuring_concurrency)} at once)"
+        )
+
         structured_count = 0
+        finished = 0
+        start = time.monotonic()
         with ThreadPoolExecutor(max_workers=max(1, self.table_config.structuring_concurrency)) as pool:
             futures = {
                 pool.submit(
@@ -163,10 +183,17 @@ class TablePipeline:
             }
             for future in as_completed(futures):
                 record_folder, crop, plain_text = futures[future]
+                finished += 1
                 try:
                     structured = future.result()
                 except Exception as e:
-                    logger.error(f"Structuring failed for {record_folder.name}/{crop['stem']}: {type(e).__name__}: {e}")
+                    raw_content = getattr(e, "raw_content", None)
+                    logger.error(
+                        f"[{finished}/{len(todo)}] Structuring failed for table {crop['stem']} of record {record_folder} "
+                        f"(model {self.table_config.vllm_model} at {self.table_config.vllm_base_url}): {type(e).__name__}: {e}"
+                        + (f"\nRaw model output:\n{raw_content}" if raw_content else ""),
+                        exc_info=e,
+                    )
                     self._mark_failed(record_folder, crop, f"{type(e).__name__}: {e}", getattr(e, "raw_content", None))
                     failed += 1
                     continue
@@ -184,13 +211,18 @@ class TablePipeline:
                 self._place_image_copy(record_folder, crop, structured)
                 self._clear_failed(record_folder, crop)
                 structured_count += 1
+                kind = "shareholder register" if structured.get("is_shareholder_register") else "other table"
+                logger.info(
+                    f"[{finished}/{len(todo)}] Structured {self._name(record_folder, crop)} "
+                    f"({kind}, {time.monotonic() - start:.0f}s since start)"
+                )
 
         for record_folder in record_folders:
             self.save_index(record_folder)
 
         return structured_count, failed
 
-    def parse(self, record_folder: Path) -> int:
+    def parse(self, record_folders: list[Path]) -> int:
         """ Applies the text and numerical rules to every structured shareholder register, in place.
 
             Returns: Number of tables the rules were applied to.
@@ -199,26 +231,37 @@ class TablePipeline:
         # Imported here, the rules pull in spaCy and text2num which the other sub-stages do not need
         from .parsing import numerical_rules, text_rules
 
+        json_paths = [path for record_folder in record_folders for path in self.table_json_paths(record_folder)]
+        logger.info(f"{len(json_paths)} structured table(s) to check for rule parsing.")
+
         parsed = 0
-        for json_path in self.table_json_paths(record_folder):
+        for number, json_path in enumerate(json_paths, start=1):
+            name = f"{json_path.parent.parent.name}/{json_path.stem}"
             data = json.loads(json_path.read_text(encoding="utf-8"))
             table = data.get("structured") or {}
             if not table.get("is_shareholder_register"):
+                logger.info(f"[{number}/{len(json_paths)}] Skipped {name} (not a shareholder register)")
                 continue
 
+            start = time.monotonic()
             try:
                 text_rules.apply_rules(table)
                 numerical_rules.apply_rules(table)
             except Exception as e:
-                logger.error(f"Rule parsing failed for {record_folder.name}/{json_path.name}: {type(e).__name__}: {e}")
+                logger.error(
+                    f"[{number}/{len(json_paths)}] Rule parsing failed for {json_path}, the table is left unparsed: "
+                    f"{type(e).__name__}: {e}", exc_info=True,
+                )
                 continue
 
             json_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+            entries = len((table.get("shareholder_register") or {}).get("entries") or [])
+            logger.info(f"[{number}/{len(json_paths)}] Parsed {name} ({entries} entries, {time.monotonic() - start:.1f}s)")
             parsed += 1
 
         return parsed
 
-    def excel(self, record_folder: Path) -> int:
+    def excel(self, record_folders: list[Path]) -> int:
         """ Writes an .xlsx and a flat .csv next to every structured table JSON.
 
             Returns: Number of tables exported.
@@ -226,19 +269,27 @@ class TablePipeline:
 
         from .parsing.excel_export import convert_table
 
+        json_paths = [path for record_folder in record_folders for path in self.table_json_paths(record_folder)]
+        logger.info(f"{len(json_paths)} structured table(s) to export.")
+
         exported = 0
-        for json_path in self.table_json_paths(record_folder):
+        for number, json_path in enumerate(json_paths, start=1):
             table = json.loads(json_path.read_text(encoding="utf-8")).get("structured") or {}
             try:
                 convert_table(table, json_path)
             except Exception as e:
-                logger.error(f"Excel export failed for {record_folder.name}/{json_path.name}: {type(e).__name__}: {e}")
+                logger.error(f"[{number}/{len(json_paths)}] Excel export failed for {json_path}: {type(e).__name__}: {e}", exc_info=True)
                 continue
+            logger.info(f"[{number}/{len(json_paths)}] Exported {json_path.parent.parent.name}/{json_path.stem} (.xlsx + .csv)")
             exported += 1
 
         return exported
 
     # -- helpers --
+
+    @staticmethod
+    def _name(record_folder: Path, crop: dict) -> str:
+        return f"{record_folder.name}/{crop['stem']}"
 
     def _place_image_copy(self, record_folder: Path, crop: dict, structured: dict) -> None:
         """ Puts the crop next to its JSON, with focus_shareholders only for shareholder registers. """

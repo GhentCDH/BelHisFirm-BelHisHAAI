@@ -61,6 +61,7 @@ The dashboard works like the BelHisFirm-TaPro TUI:
 - **STAGES**: toggle `1/3 RECORD SPLITTING`, `2/3 TABLE PROCESSING` and `3/3 OCR + EXPORT`. Each stage shows PENDING, RUNNING, DONE, SKIPPED, FAILED or ABORTED.
 - **Table sub-stages**: listed under `2/3 TABLE PROCESSING`, each with its own toggle and status: `2a TABLE DETECTION`, `2b OCR TRANSCRIPTION`, `2c STRUCTURING`, `2d RULE PARSING` and `2e EXCEL EXPORT` (the same five as BelHisFirm-TaPro). Untick one to skip it when its output is already on disk.
 - **ADVANCED**: YOLO weights, vLLM model and base URL, TEST CONNECTION, a fine-tuned GLM-OCR checkpoint for the table transcription (blank = base model), the structuring concurrency, and `Focus shareholders only` (keeps an image copy next to the JSON only for shareholder registers).
+- **Errors**: any error turns the panel and log frames red and shows a banner with the error count above the log. Each error is logged with its full traceback, the stage it happened in shows `⚠ N ERR`, and all errors are repeated in a summary at the end of the log. The red state clears on the next run.
 - **RUN PIPELINE** runs the enabled stages in order in one process, so the models are loaded once. **ABORT** stops the run. Press `q` to quit.
 
 A stage can be skipped to resume a partial run, as long as its earlier outputs are already in the output folder. The STRUCTURING sub-stage needs a running vLLM server; without one its tables end up under `tables/FAILED/` and are retried on the next run.
