@@ -24,8 +24,8 @@ class RecordManager:
         self.table_config = table_config
 
         # Shared across header detection, line OCR, and table transcription -
-        # loaded once here rather than once per consumer.
-        self.glm_ocr = GLMOCREngine()
+        # loaded once here rather than once per consumer. A fine-tuned checkpoint replaces the base model for all three.
+        self.glm_ocr = GLMOCREngine(table_config.glm_checkpoint) if table_config.glm_checkpoint else GLMOCREngine()
 
         self.vision_analyzer = VisionAnalyzer(config, yolo_model_file_path, self.glm_ocr)
         self.image_processor = ImageProcessor(config)
@@ -36,9 +36,7 @@ class RecordManager:
 
         self.table_pipeline = None
         if not table_config.skip_tables:
-            # A checkpoint fine-tuned on table crops only replaces the engine for the tables
-            table_glm_ocr = GLMOCREngine(table_config.glm_checkpoint) if table_config.glm_checkpoint else self.glm_ocr
-            self.table_pipeline = TablePipeline(table_config, table_glm_ocr)
+            self.table_pipeline = TablePipeline(table_config, self.glm_ocr)
 
 
     def build_records(self, image_paths: list[Path]) -> list[Record]:
@@ -69,15 +67,14 @@ class RecordManager:
         current_record = None
         record_id = 0
         record_start_page_idx = -1  # Tracks which page the current record started on
+        last_page_idx = 0
 
         for idx, image_path in enumerate(image_paths):
-            try:
-                image = Image.open(image_path)
-                if image.mode != 'RGB':
-                    image = image.convert('RGB')
-            except Exception as e:
-                logger.error(f"Failed to open image {image_path}, the page is left out: {type(e).__name__}: {e}", exc_info=True)
+            image = self.open_page(image_path)
+            if image is None:
                 continue
+
+            last_page_idx = idx
 
             # Detected once per page, record pages take over the regions that are left after masking
             regions = self.vision_analyzer.detect_layout(image)
@@ -89,7 +86,10 @@ class RecordManager:
                 record_id += 1
                 continue
 
-            headers_on_page = self.vision_analyzer.detect_record_headers(image, regions)
+            # Layout and header reading stay together per page, a page is too large to keep around
+            # or to open a second time for a separate reading pass
+            candidates = self.vision_analyzer.find_header_candidates(image, regions)
+            headers_on_page = self.vision_analyzer.transcribe_record_headers(image, candidates)
 
             if not headers_on_page:
                 if current_record:
@@ -128,8 +128,9 @@ class RecordManager:
                     record_count += 1
                     yield current_record
 
-                # Parse title and internal number
-                text = header["text"]
+                # Parse title and internal number, GLM-OCR puts line breaks and "---" rules in the text
+                lines = [line.strip() for line in header["text"].splitlines()]
+                text = " ".join(line for line in lines if line.strip("-—–− "))
                 parts = re.split(r'[-–—−]+', text, maxsplit=1)
                 internal_number = parts[0].strip() if len(parts) > 0 else ""
                 title = parts[1].strip() if len(parts) > 1 else text.strip()
@@ -146,6 +147,8 @@ class RecordManager:
                 record_id += 1
 
         if current_record:
+            # No header ends the last record, it runs until the last page
+            current_record.end_header_bbox_page = last_page_idx
             record_count += 1
             yield current_record
 
@@ -195,6 +198,25 @@ class RecordManager:
         logger.info(f"Finished OCR on record. (ID = {record.record_id}, Title = {record.record_title})")
 
         return ocr_data
+
+    @staticmethod
+    def open_page(image_path: Path) -> Image.Image | None:
+        """ Opens a page image as RGB.
+
+            Args: image_path (Path): Path to the page image.
+
+            Returns: The image, or None when it could not be opened.
+        """
+
+        try:
+            image = Image.open(image_path)
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+        except Exception as e:
+            logger.error(f"Failed to open image {image_path}, the page is left out: {type(e).__name__}: {e}", exc_info=True)
+            return None
+
+        return image
 
     @staticmethod
     def create_new_record(image: Image.Image, record_id: int, record_title: str = "", internal_record_number: str = "") -> Record:

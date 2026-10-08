@@ -26,6 +26,7 @@ This repository contains:
 - Python 3.13+
 - NVIDIA GPU with CUDA support (required — YOLO, Surya, and GLM-OCR all run on GPU)
 - The YOLO layout model weights must be placed manually at `model/best.pt` — this file is gitignored and not fetched automatically. It currently needs to be copied in from wherever the trained checkpoint lives (e.g. a sibling project's training run output).
+- Optional: a fine-tuned GLM-OCR model (a merged model folder, not a LoRA adapter) placed or symlinked at `model/glm-ocr`. It is then used for the header, body and table transcription instead of the base `zai-org/GLM-OCR`.
 - A running vLLM server (OpenAI-compatible API) hosting the table-structuring model (e.g. `qwen3.6-35b-nvfp4`), reachable at the URL passed to `RecordProcessor(vllm_base_url=..., vllm_model=...)` (default `http://localhost:8000/v1`). This is an external, separately-managed process — the pipeline does not start or manage it. Only needed for the table STRUCTURING sub-stage.
 - For address parsing in the table RULE PARSING sub-stage: the geonames gazetteer, installed once machine-wide with `uv run python -m geoparser install geonames` (about 10 GB on disk, about 30 GB free space needed during install). Without it, addresses are left as plain text and the other rules still apply.
 
@@ -60,7 +61,7 @@ The dashboard works like the BelHisFirm-TaPro TUI:
 - **PATHS**: input folder of scans (PAGES) and output folder (OUTPUT).
 - **STAGES**: toggle `1/3 RECORD SPLITTING`, `2/3 TABLE PROCESSING` and `3/3 OCR + EXPORT`. Each stage shows PENDING, RUNNING, DONE, SKIPPED, FAILED or ABORTED.
 - **Table sub-stages**: listed under `2/3 TABLE PROCESSING`, each with its own toggle and status: `2a TABLE DETECTION`, `2b OCR TRANSCRIPTION`, `2c STRUCTURING`, `2d RULE PARSING` and `2e EXCEL EXPORT` (the same five as BelHisFirm-TaPro). Untick one to skip it when its output is already on disk.
-- **ADVANCED**: YOLO weights, vLLM model and base URL, TEST CONNECTION, a fine-tuned GLM-OCR checkpoint for the table transcription (blank = base model), the structuring concurrency, and `Focus shareholders only` (keeps an image copy next to the JSON only for shareholder registers).
+- **ADVANCED**: YOLO weights, vLLM model and base URL, TEST CONNECTION, a fine-tuned GLM-OCR checkpoint for the header, body and table transcription (blank = `model/glm-ocr` if present, else the base model), the structuring concurrency, and `Focus shareholders only` (keeps an image copy next to the JSON only for shareholder registers).
 - **Errors**: any error turns the panel and log frames red and shows a banner with the error count above the log. Each error is logged with its full traceback, the stage it happened in shows `⚠ N ERR`, and all errors are repeated in a summary at the end of the log. The red state clears on the next run.
 - **RUN PIPELINE** runs the enabled stages in order in one process, so the models are loaded once. **ABORT** stops the run. Press `q` to quit.
 
@@ -76,9 +77,9 @@ uv run python -m src.processors.record_processor.cli --stage tables  --output /p
 uv run python -m src.processors.record_processor.cli --stage ocr     --output /path/to/output
 ```
 
-`--stage` also takes several stages (e.g. `--stage tables ocr`), which then share one process and load the models once. `--stage all` runs the three in order. Add `--weights`, `--vllm-url` and `--vllm-model` to override the defaults.
+`--stage` also takes several stages (e.g. `--stage tables ocr`), which then share one process and load the models once. `--stage all` runs the three in order. Add `--weights`, `--vllm-url` and `--vllm-model` to override the defaults, and `--glm-checkpoint` to read headers, body text and tables with another fine-tuned GLM-OCR checkpoint than `model/glm-ocr`.
 
-The tables stage runs its sub-stages `crop`, `transcribe`, `structure`, `parse` and `excel` in that order. Pick some with `--table-steps`, and tune them with `--glm-checkpoint`, `--concurrency` and `--focus-shareholders`:
+The tables stage runs its sub-stages `crop`, `transcribe`, `structure`, `parse` and `excel` in that order. Pick some with `--table-steps`, and tune them with `--concurrency` and `--focus-shareholders`:
 
 ```bash
 uv run python -m src.processors.record_processor.cli --stage tables --table-steps parse excel --output /path/to/output

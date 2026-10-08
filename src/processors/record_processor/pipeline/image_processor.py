@@ -15,6 +15,9 @@ class ImageProcessor:
     # A region that is partly masked is kept when at least this share of it stays visible
     MIN_VISIBLE_SHARE = 0.2
 
+    # A bbox spans both columns when at least this share of its width lies on either side of the spine
+    MIN_SPAN_SHARE = 0.15
+
     def __init__(self, config: ConfigParameter):
         self.config = config
 
@@ -80,8 +83,9 @@ class ImageProcessor:
             logger.warning("No spine detected, cannot determine bbox side")
             return {"side": "UNKNOWN", "halfline": None}
 
-        # Check if bbox spans across the halfline
-        if x1 < halfline < x2:
+        # Check if bbox spans across the halfline, the box of a column header often
+        # sticks a few pixels over the spine without being a full-width header
+        if min(halfline - x1, x2 - halfline) > self.MIN_SPAN_SHARE * (x2 - x1):
             meta = {"side": "MIDDLE", "halfline": halfline}
             return meta
         elif bbox_center_x < halfline:

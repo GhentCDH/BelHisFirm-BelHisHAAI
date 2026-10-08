@@ -305,7 +305,7 @@ class BelhisApp(App):
                         yield Label("vLLM base URL")
                         yield ClipboardInput(value="http://localhost:8000/v1", id="base-url-input")
                         yield Button("TEST CONNECTION", id="test-vllm-btn")
-                        yield Label("GLM-OCR table checkpoint (blank = base model)")
+                        yield Label("GLM-OCR checkpoint (blank = model/glm-ocr, else base model)")
                         yield ClipboardInput(value="", id="checkpoint-input")
                         yield Label("Structuring concurrency")
                         yield ClipboardInput(value="8", id="concurrency-input")

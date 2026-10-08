@@ -30,10 +30,10 @@ def build_pipeline_command(stages: list[str], output: Path, pages: Path | None, 
                "--weights", str(weights), "--vllm-url", vllm_url, "--vllm-model", vllm_model]
     if "records" in stages and pages is not None:
         command += ["--pages", str(pages)]
+    if glm_checkpoint is not None:
+        command += ["--glm-checkpoint", str(glm_checkpoint)]
     if "tables" in stages:
         command += ["--table-steps", *table_steps, "--concurrency", str(concurrency)]
-        if glm_checkpoint is not None:
-            command += ["--glm-checkpoint", str(glm_checkpoint)]
         if focus_shareholders:
             command.append("--focus-shareholders")
     return command

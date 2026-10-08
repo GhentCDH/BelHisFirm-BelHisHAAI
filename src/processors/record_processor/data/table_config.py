@@ -14,6 +14,6 @@ class TableConfig:
     caption_min_overlap: float = 0.3
     crop_margin: int = 0
     steps: list[str] = field(default_factory=lambda: list(TABLE_STEPS))
-    glm_checkpoint: str | None = None   # fine-tuned GLM-OCR checkpoint for table crops, None = the shared base model
+    glm_checkpoint: str | None = None   # fine-tuned GLM-OCR checkpoint for headers, body OCR and tables, None = the base model
     structuring_concurrency: int = 8    # structuring calls in flight against the vLLM server at once
     focus_shareholders: bool = False    # only keep an image copy next to the JSON of shareholder registers

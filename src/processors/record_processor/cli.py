@@ -23,6 +23,8 @@ from src.processors.record_processor.record_processor import RecordProcessor
 
 PIPELINE_STAGES = ["records", "tables", "ocr"]
 STAGES = PIPELINE_STAGES + ["all"]
+# Used instead of the base GLM-OCR model when it is there, like the YOLO weights it is not part of the repo
+DEFAULT_GLM_CHECKPOINT = Path("model/glm-ocr")
 
 
 def announce_stage(stage: str, event: str) -> None:
@@ -58,7 +60,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--table-steps", nargs="+", choices=TABLE_STEPS, default=TABLE_STEPS,
                         help="Sub-stages of the tables stage to run, always in pipeline order (default: all)")
     parser.add_argument("--glm-checkpoint", type=Path, default=None,
-                        help="Fine-tuned GLM-OCR checkpoint for the table transcription (default: the base GLM-OCR model)")
+                        help="Fine-tuned GLM-OCR checkpoint for the header, body and table transcription "
+                             f"(default: {DEFAULT_GLM_CHECKPOINT} if present, else the base GLM-OCR model)")
     parser.add_argument("--concurrency", type=int, default=8,
                         help="Structuring calls in flight against the vLLM server at once")
     parser.add_argument("--focus-shareholders", action="store_true",
@@ -80,6 +83,8 @@ def main(argv: list[str] | None = None) -> int:
             parser.error(f"--pages folder not found: {args.pages}")
     if not args.weights.exists():
         parser.error(f"YOLO weights not found: {args.weights}")
+    if args.glm_checkpoint is None and DEFAULT_GLM_CHECKPOINT.exists():
+        args.glm_checkpoint = DEFAULT_GLM_CHECKPOINT
     if args.glm_checkpoint is not None and not args.glm_checkpoint.exists():
         parser.error(f"GLM-OCR checkpoint not found: {args.glm_checkpoint}")
 

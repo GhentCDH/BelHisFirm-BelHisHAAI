@@ -47,18 +47,19 @@ class VisionAnalyzer:
                 })
         return regions
 
-    def detect_record_headers(self, image: Image.Image, regions: list[dict]) -> list | None:
-        """ Finds the record headers among the layout regions of a given image.
+    def find_header_candidates(self, image: Image.Image, regions: list[dict]) -> list[list[int]]:
+        """ Finds the regions that could be a record header among the layout regions of a given image.
+            Only uses the layout model, the candidates still have to be read by transcribe_record_headers.
 
         Args: image (Image.Image): Image to be checked.
         Args: regions (list[dict]): Layout regions of the image, from detect_layout.
 
-        Returns: list of dictionaries for each header with their bounding box and text.
+        Returns: list with the bounding box of every header candidate.
         """
 
         if not regions:
             logger.info(f"No layout predictions..")
-            return None
+            return []
 
         image_width, image_height = image.size
         verified_predictions = []
@@ -75,11 +76,23 @@ class VisionAnalyzer:
         record_header_predictions = [prediction for prediction in verified_predictions if HeaderValidator.is_record_header_candidate(prediction, self.config.header_candidate_labels)]
         if not record_header_predictions:
             logger.info(f"No record headers found in layout predictions...")
+
+        return [[int(c) for c in prediction.bbox] for prediction in record_header_predictions]
+
+    def transcribe_record_headers(self, image: Image.Image, candidates: list[list[int]]) -> list | None:
+        """ Reads the header candidates of a given image and keeps the ones that are a record header.
+
+        Args: image (Image.Image): Image the candidates were found on.
+        Args: candidates (list[list[int]]): Bounding boxes of the candidates, from find_header_candidates.
+
+        Returns: list of dictionaries for each header with their bounding box and text.
+        """
+
+        if not candidates:
             return None
 
         headers_on_page = []
-        for prediction in record_header_predictions:
-            bbox = [int(c) for c in prediction.bbox]
+        for bbox in candidates:
             padded_bbox = (
                 max(0, bbox[0] - self.config.padding),
                 max(0, bbox[1] - self.config.padding),
@@ -105,7 +118,40 @@ class VisionAnalyzer:
         # Clear GPU memory after processing headers
         GPUController.clear_gpu_memory()
 
+        headers_on_page = self.drop_overlapping_headers(headers_on_page)
+
         return headers_on_page if headers_on_page else None
+
+    @staticmethod
+    def drop_overlapping_headers(headers: list[dict]) -> list[dict]:
+        """ The layout model sometimes detects the same header twice, which would split off an empty record.
+            Of headers that overlap, only the largest one is kept.
+
+        Args: headers (list[dict]): Headers with their bounding box and text.
+
+        Returns: The headers without the ones that overlap a larger header.
+        """
+
+        def area(box: list) -> int:
+            return (box[2] - box[0]) * (box[3] - box[1])
+
+        kept = []
+        for header in sorted(headers, key=lambda header: area(header["bbox"]), reverse=True):
+            a = header["bbox"]
+            overlaps = False
+            for other in kept:
+                b = other["bbox"]
+                width, height = min(a[2], b[2]) - max(a[0], b[0]), min(a[3], b[3]) - max(a[1], b[1])
+                if width > 0 and height > 0 and width * height > 0.5 * area(a):
+                    overlaps = True
+                    break
+
+            if overlaps:
+                logger.info(f"Duplicate recordheader left out at {a}")
+            else:
+                kept.append(header)
+
+        return kept
 
     def redetect_region(self, image: Image.Image, bbox: list, original_prediction: MappedPrediction) -> list:
         """ Re-analyzes a region by splitting along the spine if found, running detection on each half.
