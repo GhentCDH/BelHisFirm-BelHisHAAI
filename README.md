@@ -171,6 +171,20 @@ python src/utils/validate_image.py /path/to/images
 
 This writes a `validation_errors.log` in the scanned directory.
 
+### Send text regions to Label Studio for OCR ground truth
+
+Samples record headers, section headers, body text, captions and page headers/footers from scanned pages, adds a GLM-OCR guess to each crop, and imports them into a Label Studio project to be corrected into training data for GLM-OCR. Put `LS_URL`, `LS_TOKEN` and `LS_PROJECT_ID` in a `.env` file in the repo root (copy `.env.example`).
+
+```bash
+# Dry run: writes the crops to ocr_preanno_crops/ and the tasks to labelstudio_tasks.json
+uv run python -m src.utils.labelstudio_preannotate.preannotate_regions --pages /path/to/images --per-label 20
+
+# Import into Label Studio
+uv run python -m src.utils.labelstudio_preannotate.preannotate_regions --pages /path/to/images --per-label 20 --commit
+```
+
+The project needs the same labeling config as the table transcription project of HisTableFinder (an image under `$captioning` with a `caption` text area), see the docstring of the script.
+
 ## Important Current Notes
 
 1. The YOLO weights default to `model/best.pt`, which is gitignored and must be placed there manually. Override it with `--weights` on the CLI or the YOLO weights field in the dashboard.
