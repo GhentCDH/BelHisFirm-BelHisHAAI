@@ -185,6 +185,16 @@ uv run python -m src.utils.labelstudio_preannotate.preannotate_regions --pages /
 
 The project needs the same labeling config as the table transcription project of HisTableFinder (an image under `$captioning` with a `caption` text area), see the docstring of the script.
 
+### Detect entities in record texts (DEBUG, GLiNER2.5)
+
+Temporary command line for a first entity pass, until it is wired into the dashboard. It joins the text blocks of each record's `ocr_data.json` and runs GLiNER2.5 (`fastino/gliner2.5-multi-v1`) for persons, companies, places, dates, money amounts and roles (edit `ENTITY_LABELS` in `src/processors/text_processor/entity_extractor.py`). Each entity is written to `entities.json` next to `ocr_data.json`, with its character span, confidence, and the page, block index and bbox it was found in.
+
+```bash
+uv run python -m src.processors.text_processor.cli --output /path/to/output --print
+uv run python -m src.processors.text_processor.cli --output /path/to/output --records 055 019 --threshold 0.4 --dry-run
+uv run python -m src.processors.text_processor.cli --text "Landen, le 25 juin 1909." --print
+```
+
 ## Important Current Notes
 
 1. The YOLO weights default to `model/best.pt`, which is gitignored and must be placed there manually. Override it with `--weights` on the CLI or the YOLO weights field in the dashboard.

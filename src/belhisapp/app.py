@@ -607,3 +607,11 @@ class BelhisApp(App):
         if self._process is not None and self._process.poll() is None:
             self._process.terminate()
         self.exit()
+
+
+def main() -> None:
+    BelhisApp().run()
+
+
+if __name__ == "__main__":
+    main()
