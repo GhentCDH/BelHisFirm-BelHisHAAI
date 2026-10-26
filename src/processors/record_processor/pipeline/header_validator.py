@@ -1,6 +1,6 @@
 import re
 
-from src.recordprocessing.data import MappedPrediction
+from src.processors.record_processor.data import MappedPrediction
 
 class HeaderValidator:
     @staticmethod
@@ -27,15 +27,13 @@ class HeaderValidator:
         return bool(section_header_pattern.match(cleaned))
 
     @staticmethod
-    def is_record_header_candidate(prediction: MappedPrediction) -> bool:
+    def is_record_header_candidate(prediction: MappedPrediction, candidate_labels: set[str]) -> bool:
         """ Checks if a prediction can be considered a record header based on its label.
 
         Args: prediction (MappedPrediction): Model prediction.
+        Args: candidate_labels (set[str]): Labels that qualify as header candidates.
 
         Returns: True if candidate header, else False.
         """
 
-        if prediction.label == "title":
-            return True
-        else:
-            return False
+        return prediction.label in candidate_labels

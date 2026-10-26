@@ -1,24 +1,25 @@
-import cv2
 import numpy as np
-import pytesseract as tesseract
 
 from ultralytics import YOLO
-from PIL import Image, ImageEnhance, ImageFilter
+from PIL import Image
 
-from src.recordprocessing.pipeline.header_validator import HeaderValidator
-from src.recordprocessing.pipeline.image_processor import ImageProcessor
-from src.recordprocessing.pipeline.result_processor import ResultProcessor
+from src.processors.record_processor.pipeline.header_validator import HeaderValidator
+from src.processors.record_processor.pipeline.image_processor import ImageProcessor
+from src.processors.record_processor.pipeline.result_processor import ResultProcessor
 
-from src.recordprocessing.data import ConfigParameter, MappedPrediction
+from src.processors.record_processor.data import ConfigParameter, MappedPrediction
 
-from src.recordprocessing.utils import GPUController
+from src.processors.record_processor.utils import GPUController
 
 import logging
 logger = logging.getLogger(__name__)
 
 class VisionAnalyzer:
 
-    def __init__(self, config: ConfigParameter, yolo_model_file_path: str):
+    HEADER_OCR_PROMPT = "Transcribe the text in this image exactly as printed, including any numbers and punctuation."
+
+    def __init__(self, config: ConfigParameter, yolo_model_file_path: str, glm_ocr):
+        """ Args: glm_ocr (GLMOCREngine): Shared GLM-OCR engine, injected so the model is only loaded once. """
 
         self.yolo_model = YOLO(yolo_model_file_path)
 
@@ -27,71 +28,71 @@ class VisionAnalyzer:
 
         self.image_processor = ImageProcessor(config)
         self.config = config
+        self.glm_ocr = glm_ocr
 
 
-    def get_excluded_regions(self, image: Image.Image) -> list:
-        """ Get regions to exclude from OCR based on layout detection.
+    def detect_layout(self, image: Image.Image) -> list[dict]:
+        """ All YOLO layout regions on a page.
 
-            Args: config: (ConfigParameter): Configuration object.
-            Args: image (Image.Image): Image to check for excluded regions on.
-
-            Returns: A list of dictionaries with 'bbox' and 'label' keys.
-            Configure excluded labels via the ConfigParameter object.
+            Returns: A list of dictionaries with 'bbox', 'label' and 'confidence' keys.
         """
 
-        excluded_regions = []
+        regions = []
+        for result in self.yolo_model.predict(image, stream=True):
+            for mapped_prediction in ResultProcessor.process_result(result):
+                regions.append({
+                    "bbox": [int(c) for c in mapped_prediction.bbox],
+                    "label": mapped_prediction.label,
+                    "confidence": float(mapped_prediction.confidence),
+                })
+        return regions
 
-        results = self.yolo_model.predict(image, stream=True)
-        for result in results:
-            mapped_predictions = ResultProcessor.process_result(result)
+    def find_header_candidates(self, image: Image.Image, regions: list[dict]) -> list[list[int]]:
+        """ Finds the regions that could be a record header among the layout regions of a given image.
+            Only uses the layout model, the candidates still have to be read by transcribe_record_headers.
 
-            for mapped_prediction in mapped_predictions:
-                if mapped_prediction.label in self.config.ocr_excluded_labels:
-                    excluded_regions.append({
-                        "bbox": [int(c) for c in mapped_prediction.bbox],
-                        "label": mapped_prediction.label,
-                        "confidence": mapped_prediction.confidence
-                    })
-                    logger.debug(f"Excluding region: {mapped_prediction.label} at {mapped_prediction.bbox}")
-
-        return excluded_regions
-
-    def detect_record_headers(self, image: Image.Image) -> list | None:
-        """ Uses YOLO model to detect record headers in a given image.
-
-        Args: config: (ConfigParameter): Configuration object.
         Args: image (Image.Image): Image to be checked.
+        Args: regions (list[dict]): Layout regions of the image, from detect_layout.
 
-        Returns: list of dictionaries for each header with their bounding box and text.
+        Returns: list with the bounding box of every header candidate.
         """
 
-        results = self.yolo_model.predict(image, stream=True)
-
-        if not results:
+        if not regions:
             logger.info(f"No layout predictions..")
-            return None
+            return []
 
         image_width, image_height = image.size
         verified_predictions = []
 
-        for result in results:
-            mapped_predictions = ResultProcessor.process_result(result)
+        for region in regions:
+            mapped_prediction = MappedPrediction(region["bbox"], region["confidence"], region["label"])
 
-            for mapped_prediction in mapped_predictions:
-                if self.is_sus_table(mapped_prediction, image_width, image_height):
-                    new_predictions = self.redetect_region(image, mapped_prediction.bbox, mapped_prediction)
-                    verified_predictions.extend(new_predictions)
-                else:
-                    verified_predictions.append(mapped_prediction)
+            if self.is_sus_table(mapped_prediction, image_width, image_height):
+                new_predictions = self.redetect_region(image, mapped_prediction.bbox, mapped_prediction)
+                verified_predictions.extend(new_predictions)
+            else:
+                verified_predictions.append(mapped_prediction)
 
-        record_header_predictions = [prediction for prediction in verified_predictions if HeaderValidator.is_record_header_candidate(prediction)]
+        record_header_predictions = [prediction for prediction in verified_predictions if HeaderValidator.is_record_header_candidate(prediction, self.config.header_candidate_labels)]
         if not record_header_predictions:
             logger.info(f"No record headers found in layout predictions...")
+
+        return [[int(c) for c in prediction.bbox] for prediction in record_header_predictions]
+
+    def transcribe_record_headers(self, image: Image.Image, candidates: list[list[int]]) -> list | None:
+        """ Reads the header candidates of a given image and keeps the ones that are a record header.
+
+        Args: image (Image.Image): Image the candidates were found on.
+        Args: candidates (list[list[int]]): Bounding boxes of the candidates, from find_header_candidates.
+
+        Returns: list of dictionaries for each header with their bounding box and text.
+        """
+
+        if not candidates:
             return None
 
         headers_on_page = []
-        for prediction in record_header_predictions:
-            bbox = [int(c) for c in prediction.bbox]
+        for bbox in candidates:
             padded_bbox = (
                 max(0, bbox[0] - self.config.padding),
                 max(0, bbox[1] - self.config.padding),
@@ -99,22 +100,9 @@ class VisionAnalyzer:
                 min(image.height, bbox[3] + self.config.padding),
             )
 
-            def prepare_for_ocr(pil_image) -> Image.Image:
-                cv_img = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2GRAY)
-
-                cv_img = cv2.resize(cv_img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
-
-                cv_img = cv2.GaussianBlur(cv_img, (3, 3), 0)
-
-                _, binary = cv2.threshold(cv_img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-
-                return Image.fromarray(binary)
-
             cropped = image.crop(padded_bbox)
-            cropped = prepare_for_ocr(cropped)
 
-            text = tesseract.image_to_string(cropped, config="--psm 6", lang="fra")
-            print(f"\n||\n{text}\n||\n")
+            text = self.glm_ocr.ocr(cropped, prompt=self.HEADER_OCR_PROMPT)
 
             valid = HeaderValidator.is_valid_section_header(text)
 
@@ -130,7 +118,40 @@ class VisionAnalyzer:
         # Clear GPU memory after processing headers
         GPUController.clear_gpu_memory()
 
+        headers_on_page = self.drop_overlapping_headers(headers_on_page)
+
         return headers_on_page if headers_on_page else None
+
+    @staticmethod
+    def drop_overlapping_headers(headers: list[dict]) -> list[dict]:
+        """ The layout model sometimes detects the same header twice, which would split off an empty record.
+            Of headers that overlap, only the largest one is kept.
+
+        Args: headers (list[dict]): Headers with their bounding box and text.
+
+        Returns: The headers without the ones that overlap a larger header.
+        """
+
+        def area(box: list) -> int:
+            return (box[2] - box[0]) * (box[3] - box[1])
+
+        kept = []
+        for header in sorted(headers, key=lambda header: area(header["bbox"]), reverse=True):
+            a = header["bbox"]
+            overlaps = False
+            for other in kept:
+                b = other["bbox"]
+                width, height = min(a[2], b[2]) - max(a[0], b[0]), min(a[3], b[3]) - max(a[1], b[1])
+                if width > 0 and height > 0 and width * height > 0.5 * area(a):
+                    overlaps = True
+                    break
+
+            if overlaps:
+                logger.info(f"Duplicate recordheader left out at {a}")
+            else:
+                kept.append(header)
+
+        return kept
 
     def redetect_region(self, image: Image.Image, bbox: list, original_prediction: MappedPrediction) -> list:
         """ Re-analyzes a region by splitting along the spine if found, running detection on each half.

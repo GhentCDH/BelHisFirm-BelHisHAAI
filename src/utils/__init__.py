@@ -8,7 +8,7 @@ from .validate_image import (
     ImageType,
 )
 
-from recordprocessing.pipeline.result_processor import ResultProcessor
+from src.processors.record_processor.pipeline.result_processor import ResultProcessor
 
 __all__ = [
     "convert_tiff_to_jp2",

@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 
 from src.belhisapp.app import BelhisApp
-from src.recordprocessing.record_processor import RecordProcessor
+from src.processors.record_processor.record_processor import RecordProcessor
 
 from huggingface_hub import logging as hf_logging
 

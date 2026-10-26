@@ -1,0 +1,1322 @@
+[
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1913_II_0723_text_x1863_y1045_w446_h63.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "Voor den voorzitter :"
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1913_II_0723_caption_x850_y1322_w169_h63.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "PASSIF."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1913_II_0723_page-header_x3059_y325_w132_h79.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "713"
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1913_II_0723_text_x2194_y4530_w561_h67.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "L'administrateur délégué,"
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1913_II_0723_caption_x2383_y3979_w177_h67.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "CREDIT."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1913_II_0723_section-header_x605_y2083_w659_h159.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "Compte de profits et pertes."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1913_II_0723_page-header_x848_y312_w1741_h87.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "ANNEXE AU MONITEUR BELGE DU 1er MAI 1913. — (ACTES Nº 3108-3110.)"
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1913_II_0723_page-footer_x2388_y4596_w190_h61.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "D. Rom."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1913_II_0723_section-header_x2134_y1884_w684_h158.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "Bilan au 31 décembre 1912."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1913_II_0723_page-footer_x270_y4647_w1307_h70.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "RECUEIL DES ACTES DES SOCIÉTÉS COMMERCIALES. — 2e TRIM. 1913."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1913_II_0723_record-header_x125_y424_w1640_h166.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "3108. — Tanneries de Stavelot, société anonyme, à Stavelot."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1913_II_0723_record-header_x1753_y1737_w1454_h219.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "5110. — Briqueterie Notre-Dame, société anonyme, à Brecht."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1898_IV_0045_text_x1741_y519_w1525_h123.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "1° Augmentation du capital social en vue de l'acquisition de quatre nouveaux chalutiers ;"
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1898_IV_0045_text_x1773_y1167_w1204_h72.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "Cet exposé fait, M. le président constate la présence de :"
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1898_IV_0045_record-header_x205_y3055_w1498_h223.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "3767. — Société anonyme des Pècheries à Vapeur, établie à Bruges. — Augmentation du capital social."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1898_IV_0045_section-header_x715_y1220_w456_h158.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "Profits et perles."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1898_IV_0045_caption_x882_y1394_w127_h58.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "DOIT."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1898_IV_0045_caption_x865_y441_w175_h62.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "PASSIF."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1898_IV_0045_page-header_x873_y311_w1713_h86.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "ANNEXE AU MONITEUR BELGE DU 5 OCTOBRE 1898. — (ACTE N° 3767.)"
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1898_IV_0045_section-header_x461_y2146_w973_h163.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "Assemblée générale du 26 septembre 1898."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1898_IV_0045_page-header_x3097_y322_w106_h81.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "35"
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1913_II_0702_text_x3129_y767_w246_h68.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "(840 lig.)"
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1913_II_0702_text_x1937_y453_w1539_h116.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "Pour expédition délivrée sur papier libre pour être inséré au Monitcur belge."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1913_II_0702_caption_x2599_y3366_w173_h67.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "CRÉDIT."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1913_II_0702_caption_x2603_y2805_w150_h59.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "DÉBIT."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1913_II_0702_section-header_x2192_y4087_w925_h162.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "Capital social au 31 décembre 1912."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1913_II_0702_page-header_x743_y318_w2367_h89.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "RECUEIL DES ACTES ET DOCUMENTS RELATIFS AUX SOCIÉTÉS COMMERCIALES. — (ACTE N° 3066.)"
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1913_II_0702_record-header_x1881_y919_w1638_h167.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "3066. — L'Epargne immobilière, société anonyme, à Anvers."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1913_II_0702_section-header_x2340_y1122_w725_h160.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "B. lan au 31 décembre 1912."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1913_II_0702_page-header_x453_y318_w140_h81.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "692"
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1898_IV_0062_text_x1974_y700_w1445_h67.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "Les 1,000 actions restantes à libérer en espèces sont souscrites par :"
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1898_IV_0062_text_x370_y994_w1524_h124.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "14. M. Augustin Somville, agent commercial, demeurant à Mont-sur-Marchienne;"
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1898_IV_0062_section-header_x516_y3457_w1183_h164.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "CHAPITRE II. — Capital social, actions, obligations."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1898_IV_0062_page-header_x422_y280_w113_h81.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "52"
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1898_IV_0062_page-header_x820_y272_w2188_h93.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "RECUEIL SPÉCIAL DES ACTES ET DOCUMENTS RELATIFS AUX SOCIÉTÉS. — (ACTE N° 3785.)"
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1898_IV_0062_section-header_x379_y1924_w1485_h219.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "CHAPITRE Ier. — Etablissement, but, siège, dénomination et durée de la société."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1898_IV_0052_text_x1929_y3847_w1529_h82.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "(Déposé au greffe du tribunal de commerce d'Anvers le 1er octobre 1898. )"
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1898_IV_0052_text_x1173_y1429_w649_h70.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "(Geteekend) S. ALDEWEIRELDT."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1898_IV_0052_record-header_x318_y3819_w1640_h224.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "5778. — The Union Marine Insurance Company Limited. Procuration."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1898_IV_0052_page-header_x434_y236_w113_h78.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "42"
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1898_IV_0052_record-header_x332_y350_w1628_h221.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "3776. — Société en nom collectif Les Enfants Aldeweireldt, à Bassevelde. — Retraite d'associée."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1898_IV_0052_section-header_x966_y4000_w345_h154.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "Traduction."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1898_IV_0052_page-header_x742_y225_w2375_h93.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "RECUEIL SPÉCIAL DES ACTES ET DOCUMENTS RELATIFS AUX SOCIÉTÉS. — (ACTES N° 3776 - 3779.)"
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1927_III.2_0266_section-header_x411_y2580_w1283_h206.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "Tuileries nationales belges,\nsociété anonyme ayant son siège à Bierges lez-Hal."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1898_IV_0047_caption_x2467_y2361_w153_h63.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "ACTIF."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1898_IV_0047_caption_x2456_y3248_w170_h58.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "PASSIF."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1898_IV_0047_record-header_x1767_y2004_w1563_h228.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "3770. — Société anonyme des Mines du Luxembourg et des Forges de Sarrebruck."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1898_IV_0083_page-footer_x321_y4623_w1036_h79.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "RECUEIL DES ACTES DE SOCIÉTÉS. — 4e TRIM. 1898."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1898_IV_0083_page-footer_x3008_y4611_w98_h64.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "10"
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1898_IV_0091_record-header_x238_y377_w1455_h224.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "5819. — Le Crédit ouvrier d'Athus, société anonyme, établie à Athus. — Statuts."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1898_IV_0091_page-footer_x3050_y4606_w91_h66.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "11"
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1898_IV_0091_page-footer_x353_y4616_w1039_h74.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "RECUEIL DES ACTES DE SOCIÉTÉS. — 4e TRIM. 1898."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1927_III.2_0225_record-header_x2206_y1489_w560_h154.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "168, avenue Louise."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1927_III.2_0225_record-header_x170_y3473_w1612_h220.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "10561. — à Emaline-Works », société en commandite simple, à Bruxelles (Saint-Josse-ten-Noode)."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1898_IV_0065_caption_x828_y3076_w181_h62.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "CRÉDIT."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1898_IV_0065_caption_x842_y710_w148_h54.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "ACTIF."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1927_III.2_0261_page-footer_x2150_y4466_w114_h65.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "189"
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1927_III.2_0261_page-footer_x222_y4465_w1076_h78.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "SOCIÉTÉS COMMERCIALES. — 3e TRIMESTRE 1927."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1927_III.2_0237_page-footer_x330_y4483_w1084_h79.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "SOCIÉTÉS COMMERCIALES. — 3° TRIMESTRE 1927."
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "data": {
+      "captioning": "<not uploaded — dry run>/EHC_B665_O_2025_1927_III.2_0237_page-footer_x3025_y4436_w108_h60.png"
+    },
+    "predictions": [
+      {
+        "model_version": "glm-ocr-base-preanno",
+        "result": [
+          {
+            "type": "textarea",
+            "from_name": "caption",
+            "to_name": "image",
+            "value": {
+              "text": [
+                "186"
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+]
