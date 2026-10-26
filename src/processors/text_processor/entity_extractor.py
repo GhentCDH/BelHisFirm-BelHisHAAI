@@ -21,6 +21,8 @@ ENTITIES_FILE = "entities.json"
 SINGLE_ADAPTER = "single"
 # Block labels (YOLO layout classes) that make up the record's running text
 TEXT_LABELS = ("Text", "Section-header")
+# How a page limit is divided over the layout labels, in parts
+DEFAULT_SPLIT = {"Section-header": 20, "Text": 80}
 
 # The label groups the domain adapters are trained on
 DOMAINS = {
@@ -48,6 +50,35 @@ def labelstudio_config(labels: dict[str, dict]) -> str:
     return "\n".join(lines)
 
 
+def box_area(item: dict) -> float:
+    """ Surface of the bbox [x1, y1, x2, y2] of a layout region or block, 0 without one. """
+    bbox = item.get("bbox")
+    return max(bbox[2] - bbox[0], 0) * max(bbox[3] - bbox[1], 0) if bbox else 0
+
+
+def pick_largest(items: list[dict], limit: int | None, split: dict[str, float] | None = None) -> list[dict]:
+    """ At most `limit` of the items (dicts with a `label` and a `bbox`), the largest by surface, divided over the
+        labels as `split` says (e.g. 20 Section-header, 80 Text: 2 and 8 of 10). A label that has fewer items than its
+        share leaves the places to the largest of the others. Returns them in their original order. """
+    if not limit or len(items) <= limit:
+        return items
+
+    split = split or DEFAULT_SPLIT
+    total = sum(split.values())
+    raw = {label: limit * weight / total for label, weight in split.items()}
+    quota = {label: int(share) for label, share in raw.items()}
+    for label in sorted(raw, key=lambda label: raw[label] - quota[label], reverse=True)[:limit - sum(quota.values())]:
+        quota[label] += 1
+
+    by_size = sorted(range(len(items)), key=lambda i: box_area(items[i]), reverse=True)
+    picked: list[int] = []
+    for label, places in quota.items():
+        picked += [i for i in by_size if items[i].get("label") == label][:places]
+    # Places a label cannot fill, and labels that are not in the split, go to the largest that are left
+    picked += [i for i in by_size if i not in picked][:limit - len(picked)]
+    return [items[i] for i in sorted(picked)]
+
+
 def find_adapter(path: Path) -> Path | None:
     """ The folder with the adapter files: the folder itself, or the trainer's final/ checkpoint inside it. """
     for candidate in (path, path / "final"):
@@ -61,14 +92,19 @@ class EntityExtractor:
 
     def __init__(self, model_name: str = DEFAULT_MODEL, device: str = "cuda", adapter_dir: Path | None = None,
                  schema_path: Path = SCHEMA_PATH, threshold: float | None = None,
-                 block_labels: tuple[str, ...] | None = TEXT_LABELS) -> None:
+                 block_labels: tuple[str, ...] | None = TEXT_LABELS, max_blocks_per_page: int | None = None,
+                 split: dict[str, float] | None = None) -> None:
         """ threshold: minimum confidence for every label, the per-label thresholds of the schema when left out.
-            block_labels: Which detections of the OCR (YOLO layout labels) are read, None for all of them. """
+            block_labels: Which detections of the OCR (YOLO layout labels) are read, None for all of them.
+            max_blocks_per_page: At most this many detections per page, the largest ones by surface, divided over
+            the layout labels as split says (pick_largest), None for all of them. """
         from gliner2 import AutoExtractor  # Heavy import, only needed once an extractor is built
 
         self.model_name = model_name
         self.threshold = threshold
         self.block_labels = block_labels
+        self.max_blocks_per_page = max_blocks_per_page
+        self.split = split
         self.labels = load_labels(schema_path)
         self.adapter_dir = Path(adapter_dir) if adapter_dir else None
 
@@ -157,14 +193,19 @@ class EntityExtractor:
 
     def build_blocks(self, ocr_data: dict) -> list[dict]:
         """ The detections (text blocks) with OCR text of all pages of an ocr_data.json structure, in reading order,
-            with where they are. """
-        return [
-            {"text": block["text"].strip(), "page": page_idx, "block_index": block_idx, "bbox": block.get("bbox"),
-             "label": block.get("label"), "column": block.get("column")}
-            for page_idx, page in enumerate(ocr_data.get("pages", []))
-            for block_idx, block in enumerate(page.get("blocks", []))
-            if (self.block_labels is None or block.get("label") in self.block_labels) and (block.get("text") or "").strip()
-        ]
+            with where they are. block_index is the position in the page of ocr_data.json, also when only some of
+            the detections of a page are taken. """
+        blocks = []
+        for page_idx, page in enumerate(ocr_data.get("pages", [])):
+            page_blocks = [
+                {"text": block["text"].strip(), "page": page_idx, "block_index": block_idx, "bbox": block.get("bbox"),
+                 "label": block.get("label"), "column": block.get("column")}
+                for block_idx, block in enumerate(page.get("blocks", []))
+                if (self.block_labels is None or block.get("label") in self.block_labels)
+                and (block.get("text") or "").strip()
+            ]
+            blocks.extend(pick_largest(page_blocks, self.max_blocks_per_page, self.split))
+        return blocks
 
     def extract_blocks(self, ocr_data_list: list[dict]) -> list[dict]:
         """ Entities of several ocr_data.json structures, each block is its own text, as in the training data.

@@ -1,6 +1,9 @@
 """ Pre-annotates the detections of a folder with GLiNER2.5 and sends them to Label Studio, every detection (YOLO
     text block with its OCR text) as a task of its own, so the entities can be corrected there and used as training
-    data (see gliner_convert). Runs the OCR of the record pipeline on what has no ocr_data.json yet.
+    data (see gliner_convert). Only the Text and Section-header detections (--labels), at most 10 per page
+    (--max-per-page): the largest ones by surface, 20% section headers and 80% texts (--split), and at most
+    --max-pages pages, a random pick that is the same every run. Runs the OCR of the record pipeline on what has no
+    ocr_data.json yet.
 
     # Dry run: writes the tasks to labelstudio_ner_tasks.json
     uv run python -m src.processors.text_processor.labelstudio_cli --input /path/to/pages --project 120
@@ -30,8 +33,8 @@ from pathlib import Path
 import requests
 
 from src.processors.text_processor.cli import add_model_arguments, make_extractor
-from src.processors.text_processor.entity_extractor import EntityExtractor, labelstudio_config, load_labels
-from src.processors.text_processor.ocr_input import Source, discover, run_ocr
+from src.processors.text_processor.entity_extractor import DEFAULT_SPLIT, TEXT_LABELS, EntityExtractor, labelstudio_config, load_labels
+from src.processors.text_processor.ocr_input import Source, discover, keep_pages, run_ocr, select_pages
 from src.utils.labelstudio_preannotate.client import LabelStudioClient
 
 logger = logging.getLogger(__name__)
@@ -47,6 +50,20 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Folder of page images, a page image, or the output folder of the record pipeline")
     parser.add_argument("--from-tasks", type=Path, default=None,
                         help="Tasks file of an earlier run, to import without reading the input and the OCR again")
+    parser.add_argument("--labels", nargs="+", default=list(TEXT_LABELS),
+                        help="Layout labels of the detections to take, 'all' for every text detection "
+                             "(default: %(default)s)")
+    parser.add_argument("--max-per-page", type=int, default=10,
+                        help="At most this many detections per page, the largest ones by surface in reading order "
+                             "(0 = all, default: %(default)s)")
+    parser.add_argument("--split", nargs="+", metavar="LABEL=PARTS",
+                        default=[f"{label}={parts}" for label, parts in DEFAULT_SPLIT.items()],
+                        help="How the detections per page are divided over the layout labels, a label with too few "
+                             "leaves its places to the others (default: %(default)s)")
+    parser.add_argument("--max-pages", type=int, default=0,
+                        help="At most this many pages over the whole input, a random pick that is the same every run "
+                             "(0 = all, default: %(default)s)")
+    parser.add_argument("--seed", type=int, default=42, help="Seed of the pick of pages")
     parser.add_argument("--redo-ocr", action="store_true", help="Run the OCR also where there is an ocr_data.json")
     parser.add_argument("--weights", type=Path, default=Path("model/best.pt"), help="YOLO layout model weights")
     parser.add_argument("--glm-checkpoint", type=Path, default=None,
@@ -109,17 +126,31 @@ def existing_sources(client: LabelStudioClient) -> set[str]:
     return sources
 
 
+def block_labels(args: argparse.Namespace) -> tuple[str, ...] | None:
+    return None if "all" in args.labels else tuple(args.labels)
+
+
+def max_per_page(args: argparse.Namespace) -> int | None:
+    return args.max_per_page or None
+
+
+def split(args: argparse.Namespace) -> dict[str, float]:
+    return {label: float(parts) for label, _, parts in (item.partition("=") for item in args.split)}
+
+
 def collect_tasks(args: argparse.Namespace, sources: list[Source]) -> list[dict]:
     """ The tasks of every detection of these records, with the entities of GLiNER unless --no-predictions. """
     ocr_data = [source.ocr_data for source in sources]
     if args.no_predictions:
         # No model: the blocks only, without entities
         extractor = EntityExtractor.__new__(EntityExtractor)
-        extractor.block_labels, extractor.model_name, extractor.adapters = None, "none", {}
+        extractor.block_labels, extractor.model_name, extractor.adapters = block_labels(args), "none", {}
+        extractor.max_blocks_per_page, extractor.split = max_per_page(args), split(args)
         records = [{"record_id": data.get("record_id"), "record_title": data.get("record_title"),
                     "blocks": [{**block, "entities": []} for block in extractor.build_blocks(data)]} for data in ocr_data]
     else:
-        extractor = make_extractor(args, block_labels=None)  # Every detection, not only the running text
+        extractor = make_extractor(args, block_labels=block_labels(args), max_blocks_per_page=max_per_page(args),
+                                   split=split(args))
         records = extractor.extract_blocks(ocr_data)
 
     tasks = []
@@ -151,10 +182,14 @@ def main(argv: list[str] | None = None) -> int:
         if not sources:
             logger.error("No records or page images found in %s", args.input)
             return 1
+        selected = select_pages(sources, args.max_pages, args.seed, block_labels(args)) if args.max_pages else None
         to_read = [source for source in sources if source.ocr_data is None or args.redo_ocr]
         if to_read:
             logger.info("Running the OCR on %d of %d records", len(to_read), len(sources))
-            run_ocr(to_read, args.weights, args.glm_checkpoint)
+            run_ocr(to_read, args.weights, args.glm_checkpoint, block_labels(args), max_per_page(args), split(args), selected)
+        if selected:
+            for source in sources:
+                keep_pages(source, selected[source.name])
         tasks = collect_tasks(args, sources)
         logger.info("%d records, %d detections", len(sources), len(tasks))
 

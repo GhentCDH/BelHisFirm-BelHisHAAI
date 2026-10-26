@@ -8,11 +8,12 @@
 import gc
 import json
 import logging
+import random
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from src.processors.text_processor.entity_extractor import OCR_FILE
+from src.processors.text_processor.entity_extractor import OCR_FILE, pick_largest
 
 logger = logging.getLogger(__name__)
 
@@ -53,9 +54,41 @@ def _record_source(folder: Path) -> Source:
     return source
 
 
-def run_ocr(sources: list[Source], weights: Path = Path("model/best.pt"), glm_checkpoint: Path | None = None) -> None:
+def select_pages(sources: list[Source], max_pages: int, seed: int = 42,
+                 labels: tuple[str, ...] | None = None) -> dict[str, set[int]]:
+    """ At most max_pages pages over all records, a random pick (the same for the same seed and input). Returns per
+        record name the page numbers (0-based, as in ocr_data.json) that are taken. Of records with an ocr_data.json
+        only the pages with text in these layout labels can be picked, the others are only known after the OCR. """
+    def has_text(page: dict) -> bool:
+        return any((block.get("text") or "").strip() and (labels is None or block.get("label") in labels)
+                   for block in page.get("blocks", []))
+
+    pages = [(source.name, idx) for source in sources
+             for idx in (range(len(source.images)) if source.ocr_data is None else
+                         [i for i, page in enumerate(source.ocr_data["pages"]) if has_text(page)])]
+    picked = random.Random(f"{seed}-pages").sample(pages, min(max_pages, len(pages)))
+    selected: dict[str, set[int]] = {source.name: set() for source in sources}
+    for name, idx in picked:
+        selected[name].add(idx)
+    return selected
+
+
+def keep_pages(source: Source, pages: set[int]) -> None:
+    """ Empties the pages of an ocr_data that are not taken, page numbers stay what they are. """
+    source.ocr_data = {**source.ocr_data, "pages": [
+        page if idx in pages else {**page, "blocks": []} for idx, page in enumerate(source.ocr_data["pages"])]}
+
+
+def run_ocr(sources: list[Source], weights: Path = Path("model/best.pt"), glm_checkpoint: Path | None = None,
+            labels: tuple[str, ...] | None = None, max_per_page: int | None = None,
+            split: dict[str, float] | None = None, only_pages: dict[str, set[int]] | None = None) -> None:
     """ Fills in ocr_data of these sources: YOLO layout (the saved layout.json of a record folder when it fits the
-        weights) and GLM-OCR on every text region, the models are freed again afterwards. """
+        weights) and GLM-OCR on the text regions, the models are freed again afterwards.
+
+        Args: labels: Only the regions with these layout labels, None for all text regions.
+        Args: max_per_page: At most this many regions per page, the largest ones divided over the layout labels as
+              split says (pick_largest), the others are not read at all. None for all of them.
+        Args: only_pages: Per record the pages (0-based) to read, the others are left empty. None for all pages. """
     from src.processors.record_processor.pipeline import IOManager, RecordManager
     from src.processors.record_processor.record_processor import RecordProcessor
     from src.processors.record_processor.utils import GPUController
@@ -76,12 +109,17 @@ def run_ocr(sources: list[Source], weights: Path = Path("model/best.pt"), glm_ch
 
         pages = []
         for idx, path in enumerate(source.images):
+            if only_pages is not None and idx not in only_pages[source.name]:
+                pages.append({"blocks": [], "spine_position": None})  # Kept, so the page numbers stay what they are
+                continue
             logger.info("[%d/%d] OCR on %s, page %d/%d", number, len(sources), source.name, idx + 1, len(source.images))
             image = RecordManager.open_page(path)
             if image is None:
                 continue
             regions = layout[idx] if layout else manager.vision_analyzer.detect_layout(image)
-            text_regions = [r for r in regions if r["label"] not in manager.config.ocr_excluded_labels]
+            text_regions = [r for r in regions if r["label"] not in manager.config.ocr_excluded_labels
+                            and (labels is None or r["label"] in labels)]
+            text_regions = pick_largest(text_regions, max_per_page, split)
             pages.append(manager.ocr_processor.process_text_blocks(image, text_regions))
             GPUController.clear_gpu_memory()
 
