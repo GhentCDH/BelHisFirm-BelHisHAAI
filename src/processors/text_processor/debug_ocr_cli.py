@@ -14,8 +14,7 @@ from pathlib import Path
 
 from src.processors.record_processor.pipeline import IOManager, RecordManager
 from src.processors.record_processor.record_processor import RecordProcessor
-from src.processors.text_processor.cli import highlight_text, print_entities
-from src.processors.text_processor.entity_extractor import DEFAULT_MODEL, DEFAULT_THRESHOLD, EntityExtractor
+from src.processors.text_processor.cli import add_model_arguments, make_extractor, print_record
 
 logger = logging.getLogger(__name__)
 
@@ -31,9 +30,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--weights", type=Path, default=Path("model/best.pt"), help="YOLO layout model weights")
     parser.add_argument("--glm-checkpoint", type=Path, default=None,
                         help="Fine-tuned GLM-OCR checkpoint (default: model/glm-ocr if present, else the base model)")
-    parser.add_argument("--model", default=DEFAULT_MODEL, help="GLiNER2 / GLiNER2.5 checkpoint")
-    parser.add_argument("--device", default="cuda", help="Device to load GLiNER on")
-    parser.add_argument("--threshold", type=float, default=DEFAULT_THRESHOLD, help="Minimum confidence")
+    add_model_arguments(parser)
     parser.add_argument("--print", dest="show", action="store_true", help="Print the OCR text and the entities")
     parser.add_argument("--save-json", type=Path, default=None, help="Write the OCR result and entities to this file")
     return parser
@@ -69,13 +66,11 @@ def main(argv: list[str] | None = None) -> int:
         ocr_pages.append(manager.ocr_processor.process_text_blocks(image, text_regions))
 
     ocr_data = {"record_id": None, "record_title": args.input.name, "pages": ocr_pages}
-    extractor = EntityExtractor(args.model, args.device, args.threshold)
+    extractor = make_extractor(args)
     result = extractor.extract_ocr_data(ocr_data)
 
     if args.show:
-        print(highlight_text(extractor.build_record_text(ocr_data)[0], result["entities"]))
-        print()
-        print_entities(result["entities"])
+        print_record(result)
     if args.save_json:
         args.save_json.write_text(json.dumps({**result, "pages": ocr_pages}, ensure_ascii=False, indent=2),
                                   encoding="utf-8")

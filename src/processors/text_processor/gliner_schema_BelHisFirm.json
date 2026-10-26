@@ -1,0 +1,100 @@
+{
+  "schema_name": "Historical French NER",
+  "schema_version": "1.0",
+  "description": "Entity and relation extraction schema for historical French company documents",
+  "model_version": "fastino/gliner2-multi-v1",
+  "entities": {
+    "date": {
+      "description": "Date expression in various formats, both numeric or written out (e.g., '15 mars 1920', 'le trois avril mil neuf cent dix', '1920')",
+      "threshold": 0.5
+    },
+    "time_period": {
+      "description": "Legal or contractual duration of an organization or mandate expressed in time units (e.g., pour 30 ans · durée illimitée · jusqu’en 1950 )",
+      "threshold": 0.5
+    },
+    "organization_name": {
+      "description": "Full or abbreviated name of a company, society, or institution (e.g., 'Société Générale', 'S.A. Métallurgique')",
+      "threshold": 0.5
+    },
+    "corporate_body": {
+      "description": "Governing body of an organization or meeting convening body (e.g., 'conseil d'administration', 'assemblée générale', 'comité de direction')",
+      "threshold": 0.5
+    },
+    "legal_structure": {
+      "description": "Legal structure or type of an organization (e.g., société anonyme, société coopérative, société en nom collectif). “société” without any further specification is not enough to be considered a legal_structure.",
+      "threshold": 0.5
+    },
+    "business_activity": {
+      "description": "Business purpose, mission, or commercial activity (e.g., 'exploitation minière', 'commerce de textiles', 'opérations bancaires et de crédit')",
+      "threshold": 0.5
+    },
+    "office_type": {
+      "description": "Type of organizational location or headquarters (e.g., 'siège social', 'siège administratif', 'bureau principal')",
+      "threshold": 0.5
+    },
+    "legal_act": {
+      "description": "Type of legal procedure, action, or deed (e.g., 'acte', 'constitution', 'dissolution', 'liquidation', 'modification des statuts', 'enregistrement au registre du commerce')",
+      "threshold": 0.5
+    },
+    "deed_number": {
+      "description": "Reference number or identifier for a legal deed (e.g., 'n° 5442', 'n° 2612 de 1920', 'acte 1234')",
+      "threshold": 0.5
+    },
+    "archive_reference": {
+      "description": "Registry, archive, or filing reference (e.g., 'volume 12, folio 45', 'registre du commerce n° 1234', 'dossier 567')",
+      "threshold": 0.5
+    },
+    "person": {
+      "description": "Name of an individual human being. This includes full names, surnames used alone, and names with abbreviated given names (e.g., “Jean Dupont”, “Dupont”, “M. Curie”, “Marie Curie”, “J.-B. Colbert”).",
+      "threshold": 0.5
+    },
+    "honorific_title": {
+      "description": "Social title, honorific, or form of address (e.g., 'monsieur', 'm.', 'madame', 'me', 'veuve', 'vve')",
+      "threshold": 0.5
+    },
+    "occupation": {
+      "description": "A profession, trade, or type of work associated with a person, independent of a specific organizational role (e.g., “négociant”, “rentier”, “ingénieur”, “avocat”).",
+      "threshold": 0.5
+    },
+    "corporate_position": {
+      "description": "Official title or role within an organization (e.g., 'président', 'administrateur', 'directeur', 'scrutateur', 'commissaire')",
+      "threshold": 0.5
+    },
+    "number_of_shares": {
+      "description": "A numerical quantity indicating the amount of shares or ownership units held or issued. The number may appear in digits or words and typically accompanies terms such as “actions” or “parts sociales” (e.g., “2 000 actions”, “500 parts sociales”, “mille actions”).",
+      "threshold": 0.5
+    },
+    "number_of_votes": {
+      "description": "A numerical quantity indicating the amount of votes or voting rights held or issued. The number may appear in digits or words and typically accompanies terms such as “voix” or “droits de vote” (e.g., “20 voix”, “500 droits de vote”, “honderd en acht stemmen”).",
+      "threshold": 0.5
+    },
+    "share_class": {
+      "description": "Type, form, or class of shares (e.g., 'actions au porteur', 'actions nominatives', 'parts privilégiées')",
+      "threshold": 0.5
+    },
+    "share_nominal_value": {
+      "description": "monetary value of shares, secorities of capital. This is the par value or nominal value per share (e.g., '500 francs', 'cent francs par action')",
+      "threshold": 0.5
+    },
+    "capital_category": {
+      "description": "Classification of share capital (e.g., 'capital social', 'capital libéré', 'capital souscrit', 'capital autorisé')",
+      "threshold": 0.5
+    },
+    "country": {
+      "description": "Name of a country or nation (e.g., 'Belgique', 'France', 'Congo')",
+      "threshold": 0.5
+    },
+    "city": {
+      "description": "Name of a city, town, or commune (e.g., 'Bruxelles', 'Paris', 'Anvers')",
+      "threshold": 0.5
+    },
+    "street_address": {
+      "description": "Complete street address with number and street name (e.g., 'numéro 10 rue de la Paix', '25 avenue Louise')",
+      "threshold": 0.5
+    },
+    "building_name": {
+      "description": "Name of a building, property, estate, or landmark (e.g., 'Hôtel Métropole', 'Palais de Justice', 'Château de Laeken')",
+      "threshold": 0.5
+    }
+  }
+}

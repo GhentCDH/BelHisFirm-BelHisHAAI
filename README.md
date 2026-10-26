@@ -185,15 +185,47 @@ uv run python -m src.utils.labelstudio_preannotate.preannotate_regions --pages /
 
 The project needs the same labeling config as the table transcription project of HisTableFinder (an image under `$captioning` with a `caption` text area), see the docstring of the script.
 
-### Detect entities in record texts (DEBUG, GLiNER2.5)
+### Detect entities in record texts (DEBUG, GLiNER)
 
-Temporary command line for a first entity pass, until it is wired into the dashboard. It joins the text blocks of each record's `ocr_data.json` and runs GLiNER2.5 (`fastino/gliner2.5-multi-v1`) for persons, companies, places, dates, money amounts and roles (edit `ENTITY_LABELS` in `src/processors/text_processor/entity_extractor.py`). Each entity is written to `entities.json` next to `ocr_data.json`, with its character span, confidence, and the page, block index and bbox it was found in.
+Temporary command line for a first entity pass, until it is wired into the dashboard. It runs GLiNER on every text block of each record's `ocr_data.json` (the training data of the adapters are paragraph-sized texts as well), with the 23 BelHisFirm labels of `src/processors/text_processor/gliner_schema_BelHisFirm.json` (label descriptions and thresholds, from the ghentcdh-glinerv2-tutorial). With `--print` the blocks are shown with the entities highlighted in the color of their domain (date, organisation, legal, person, share, location; underlined where entities overlap).
+
+Each record gets an `entities.json` next to its `ocr_data.json`: every entity with its label, domain, text, confidence, character span (relative to its block) and the page, block index and bbox of the block. `--labelstudio tasks.json` also writes the entities as Label Studio pre-annotations, one task per text block.
 
 ```bash
 uv run python -m src.processors.text_processor.cli --output /path/to/output --print
-uv run python -m src.processors.text_processor.cli --output /path/to/output --records 055 019 --threshold 0.4 --dry-run
+uv run python -m src.processors.text_processor.cli --output /path/to/output --records 055 019 --dry-run
 uv run python -m src.processors.text_processor.cli --text "Landen, le 25 juin 1909." --print
+# OCR page images first, then the entities (also temporary)
+uv run python -m src.processors.text_processor.debug_ocr_cli --input page_001.jpg --print
 ```
+
+The model is GLiNER2.5 (`fastino/gliner2.5-multi-v1`). The BelHisFirm LoRA adapters in `model/gliner/adapters/v25` are used when they exist (`--adapter-dir` for others, `--no-adapters` for the plain model): a folder with one adapter per domain (one pass per domain), or a single all-label adapter.
+
+#### Annotate further with the model's pre-annotations
+
+Once an adapter works, let it pre-annotate new records and only correct its mistakes in Label Studio, then retrain on the corrected data. The entity pre-annotations go to their own Label Studio project (not the OCR one): create a project, paste the output of `cli --labelstudio-config` in its Labeling Interface and put `LS_URL`, `LS_TOKEN` and `LS_NER_PROJECT_ID` in `.env`.
+
+```bash
+# 1. Pre-annotate (dry run writes ner_tasks.json, --commit imports it into Label Studio)
+uv run python -m src.processors.text_processor.cli --output /path/to/output --adapter-dir model/gliner/adapters/v25 --labelstudio ner_tasks.json --commit
+# 2. Correct the entities in Label Studio, export the project as JSON
+# 3. Turn the export into training data, added to the existing data (that folder stays as it is)
+uv run python -m src.processors.text_processor.gliner_convert --export ls_export.json --merge model/gliner/data --out model/gliner/data_round2
+# 4. Retrain on it
+uv run python -m src.processors.text_processor.gliner_train --data-dir model/gliner/data_round2 --out model/gliner/adapters/v25_round2
+```
+
+The corrected data only goes to the training set, `test.json` is copied unchanged so the rounds can be scored on the same texts. Review the pre-annotations rather than accepting them, otherwise the model's mistakes end up in its next training data.
+
+#### Train the adapters
+
+The training data (`train.json`, `train_<domain>.json`, `test.json`) comes from the tutorial repo and is copied to `model/gliner/data` (gitignored). The adapters are trained on GLiNER2.5 and saved to the folder the CLI reads by default:
+
+```bash
+uv run python -m src.processors.text_processor.gliner_train --out model/gliner/adapters/v25
+```
+
+Use `--domains date person` for some domains only, or `--single` for one adapter on all labels.
 
 ## Important Current Notes
 
