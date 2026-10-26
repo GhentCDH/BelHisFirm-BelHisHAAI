@@ -189,7 +189,7 @@ The project needs the same labeling config as the table transcription project of
 
 Temporary command line for a first entity pass, until it is wired into the dashboard. It runs GLiNER on every text block of each record's `ocr_data.json` (the training data of the adapters are paragraph-sized texts as well), with the 23 BelHisFirm labels of `src/processors/text_processor/gliner_schema_BelHisFirm.json` (label descriptions and thresholds, from the ghentcdh-glinerv2-tutorial). With `--print` the blocks are shown with the entities highlighted in the color of their domain (date, organisation, legal, person, share, location; underlined where entities overlap).
 
-Each record gets an `entities.json` next to its `ocr_data.json`: every entity with its label, domain, text, confidence, character span (relative to its block) and the page, block index and bbox of the block. `--labelstudio tasks.json` also writes the entities as Label Studio pre-annotations, one task per text block.
+Each record gets an `entities.json` next to its `ocr_data.json`: every entity with its label, domain, text, confidence, character span (relative to its block) and the page, block index and bbox of the block.
 
 ```bash
 uv run python -m src.processors.text_processor.cli --output /path/to/output --print
@@ -203,15 +203,20 @@ The model is GLiNER2.5 (`fastino/gliner2.5-multi-v1`). The BelHisFirm LoRA adapt
 
 #### Annotate further with the model's pre-annotations
 
-Once an adapter works, let it pre-annotate new records and only correct its mistakes in Label Studio, then retrain on the corrected data. The entity pre-annotations go to their own Label Studio project (not the OCR one): create a project, paste the output of `cli --labelstudio-config` in its Labeling Interface and put `LS_URL`, `LS_TOKEN` and `LS_NER_PROJECT_ID` in `.env`.
+Once an adapter works, let it pre-annotate new records and only correct its mistakes in Label Studio, then retrain on the corrected data. `labelstudio_cli` takes a folder of page images (or the output folder of the record pipeline), runs the OCR (YOLO layout + GLM-OCR, as in the OCR stage) on what has no `ocr_data.json` yet, and makes every detection (YOLO text block with its OCR text, also those without entities) a Label Studio task of its own, pre-annotated with GLiNER2.5 and the adapters. The task data keeps where it came from (`record_folder`, `page`, `block_index`, `bbox`, `yolo_label`) and a `source` key, so tasks that are already in the project are left out when you import again.
+
+The tasks go to a Label Studio NER project (a `text` Text tag and a `label` Labels tag with the 23 labels, like project 120 `BelHisFirm NER #2`; `--print-config` prints the config for a new one). `LS_URL` and `LS_TOKEN` come from `.env`, give the project with `--project` or `LS_NER_PROJECT_ID`.
 
 ```bash
-# 1. Pre-annotate (dry run writes ner_tasks.json, --commit imports it into Label Studio)
-uv run python -m src.processors.text_processor.cli --output /path/to/output --adapter-dir model/gliner/adapters/v25 --labelstudio ner_tasks.json --commit
-# 2. Correct the entities in Label Studio, export the project as JSON
-# 3. Turn the export into training data, added to the existing data (that folder stays as it is)
+# 1. Dry run: OCR + entities, only writes labelstudio_ner_tasks.json (nothing is written into the input folder)
+uv run python -m src.processors.text_processor.labelstudio_cli --input /path/to/pages --project 120
+# 2. Import a few first, then everything (--from-tasks imports the file of the dry run without redoing the OCR)
+uv run python -m src.processors.text_processor.labelstudio_cli --from-tasks labelstudio_ner_tasks.json --project 120 --commit --limit 20
+uv run python -m src.processors.text_processor.labelstudio_cli --from-tasks labelstudio_ner_tasks.json --project 120 --commit
+# 3. Correct the entities in Label Studio, export the project as JSON
+# 4. Turn the export into training data, added to the existing data (that folder stays as it is)
 uv run python -m src.processors.text_processor.gliner_convert --export ls_export.json --merge model/gliner/data --out model/gliner/data_round2
-# 4. Retrain on it
+# 5. Retrain on it
 uv run python -m src.processors.text_processor.gliner_train --data-dir model/gliner/data_round2 --out model/gliner/adapters/v25_round2
 ```
 

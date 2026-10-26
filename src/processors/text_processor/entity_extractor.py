@@ -60,12 +60,15 @@ class EntityExtractor:
     """ Loads GLiNER once (plus its adapters) and extracts entities from strings, blocks or record folders. """
 
     def __init__(self, model_name: str = DEFAULT_MODEL, device: str = "cuda", adapter_dir: Path | None = None,
-                 schema_path: Path = SCHEMA_PATH, threshold: float | None = None) -> None:
-        """ threshold: minimum confidence for every label, the per-label thresholds of the schema when left out. """
+                 schema_path: Path = SCHEMA_PATH, threshold: float | None = None,
+                 block_labels: tuple[str, ...] | None = TEXT_LABELS) -> None:
+        """ threshold: minimum confidence for every label, the per-label thresholds of the schema when left out.
+            block_labels: Which detections of the OCR (YOLO layout labels) are read, None for all of them. """
         from gliner2 import AutoExtractor  # Heavy import, only needed once an extractor is built
 
         self.model_name = model_name
         self.threshold = threshold
+        self.block_labels = block_labels
         self.labels = load_labels(schema_path)
         self.adapter_dir = Path(adapter_dir) if adapter_dir else None
 
@@ -152,14 +155,15 @@ class EntityExtractor:
         """ Entities of one string. """
         return self.extract_texts([text])[0]
 
-    @staticmethod
-    def build_blocks(ocr_data: dict) -> list[dict]:
-        """ The text blocks of all pages of an ocr_data.json structure, in reading order, with where they are. """
+    def build_blocks(self, ocr_data: dict) -> list[dict]:
+        """ The detections (text blocks) with OCR text of all pages of an ocr_data.json structure, in reading order,
+            with where they are. """
         return [
-            {"text": block["text"].strip(), "page": page_idx, "block_index": block_idx, "bbox": block.get("bbox")}
+            {"text": block["text"].strip(), "page": page_idx, "block_index": block_idx, "bbox": block.get("bbox"),
+             "label": block.get("label"), "column": block.get("column")}
             for page_idx, page in enumerate(ocr_data.get("pages", []))
             for block_idx, block in enumerate(page.get("blocks", []))
-            if block.get("label") in TEXT_LABELS and (block.get("text") or "").strip()
+            if (self.block_labels is None or block.get("label") in self.block_labels) and (block.get("text") or "").strip()
         ]
 
     def extract_blocks(self, ocr_data_list: list[dict]) -> list[dict]:
@@ -202,21 +206,27 @@ class EntityExtractor:
             ],
         }
 
-    def to_labelstudio_tasks(self, result: dict) -> list[dict]:
-        """ Label Studio tasks (one per text block with entities) with the entities as pre-annotations, to correct
-            them there and use them as training data. Same labeling config as the training data: a `label` Labels
-            tag on a `text` Text tag. """
+    def to_labelstudio_tasks(self, result: dict, record_folder: str) -> list[dict]:
+        """ One Label Studio task per detection (text block) of a record, in reading order, with the entities as
+            pre-annotations. Detections without entities are tasks too, to find what the model missed. The `source`
+            in the task data identifies the detection, to leave out what is already in the project.
+            Same labeling config as the training data: a `label` Labels tag on a `text` Text tag. """
         version = "+".join([self.model_name, *self.adapters]) if self.adapters else self.model_name
-        return [
-            {"data": {"text": block["text"], "record_id": result["record_id"], "record_title": result["record_title"],
-                      "page": block["page"], "block_index": block["block_index"]},
-             "predictions": [{"model_version": version, "result": [
-                 {"from_name": "label", "to_name": "text", "type": "labels", "score": entity["confidence"],
-                  "value": {"start": entity["start"], "end": entity["end"], "text": entity["text"],
-                            "labels": [entity["label"]]}}
-                 for entity in block["entities"]]}]}
-            for block in result["blocks"] if block["entities"]
-        ]
+        tasks = []
+        for block in result["blocks"]:
+            task = {"data": {
+                "text": block["text"], "source": f"{record_folder}/page_{block['page'] + 1:03d}/block_{block['block_index']:03d}",
+                "record_id": result["record_id"], "record_title": result["record_title"], "record_folder": record_folder,
+                "page": block["page"] + 1, "block_index": block["block_index"], "bbox": block["bbox"],
+                "yolo_label": block["label"], "column": block["column"]}}
+            if block["entities"]:
+                task["predictions"] = [{"model_version": version, "result": [
+                    {"from_name": "label", "to_name": "text", "type": "labels", "score": entity["confidence"],
+                     "value": {"start": entity["start"], "end": entity["end"], "text": entity["text"],
+                               "labels": [entity["label"]]}}
+                    for entity in block["entities"]]}]
+            tasks.append(task)
+        return tasks
 
     @staticmethod
     def save(record_folder: Path, result: dict) -> Path:

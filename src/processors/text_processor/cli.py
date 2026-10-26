@@ -5,14 +5,7 @@
     uv run python -m src.processors.text_processor.cli --output output/ --adapter-dir model/gliner/adapters/v25
     uv run python -m src.processors.text_processor.cli --text "Landen, le 25 juin 1909." --print
 
-    Pre-annotate for Label Studio (dry run writes the file, --commit imports it), then correct the entities there
-    and turn the export into new training data with gliner_convert:
-
-    uv run python -m src.processors.text_processor.cli --labelstudio-config
-    uv run python -m src.processors.text_processor.cli --output output/ --adapter-dir model/gliner/adapters/v25 \\
-        --labelstudio ner_tasks.json --commit
-
-    Train the adapters with gliner_train.
+    Train the adapters with gliner_train, pre-annotate for Label Studio with labelstudio_cli.
 """
 
 import argparse
@@ -23,8 +16,7 @@ import sys
 from pathlib import Path
 
 from src.processors.text_processor.entity_extractor import (
-    DEFAULT_ADAPTER_DIR, DEFAULT_MODEL, DOMAIN_OF, DOMAINS, ENTITIES_FILE, OCR_FILE, SCHEMA_PATH, EntityExtractor, labelstudio_config,
-    load_labels,
+    DEFAULT_ADAPTER_DIR, DEFAULT_MODEL, DOMAIN_OF, DOMAINS, ENTITIES_FILE, OCR_FILE, SCHEMA_PATH, EntityExtractor,
 )
 
 logger = logging.getLogger(__name__)
@@ -49,9 +41,9 @@ def add_model_arguments(parser: argparse.ArgumentParser) -> None:
                         help="Minimum confidence for every label (default: the per-label thresholds of the schema)")
 
 
-def make_extractor(args: argparse.Namespace) -> EntityExtractor:
+def make_extractor(args: argparse.Namespace, **kwargs) -> EntityExtractor:
     adapter_dir = None if args.no_adapters else args.adapter_dir
-    return EntityExtractor(args.model, args.device, adapter_dir, args.schema, args.threshold)
+    return EntityExtractor(args.model, args.device, adapter_dir, args.schema, args.threshold, **kwargs)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -63,13 +55,6 @@ def build_parser() -> argparse.ArgumentParser:
     add_model_arguments(parser)
     parser.add_argument("--print", dest="show", action="store_true", help="Print the highlighted text and the entities")
     parser.add_argument("--dry-run", action="store_true", help=f"Do not write {ENTITIES_FILE}")
-    parser.add_argument("--labelstudio", type=Path, default=None,
-                        help="Also write the entities as Label Studio pre-annotations (one task per text block)")
-    parser.add_argument("--commit", action="store_true",
-                        help="Import those tasks into the Label Studio NER project (LS_URL, LS_TOKEN and "
-                             "LS_NER_PROJECT_ID in .env), without it only the file is written")
-    parser.add_argument("--labelstudio-config", action="store_true",
-                        help="Print the labeling config for the Label Studio NER project and exit")
     return parser
 
 
@@ -139,31 +124,10 @@ def find_records(output: Path, prefixes: list[str] | None) -> list[Path]:
     return folders
 
 
-def commit_to_labelstudio(tasks: list[dict]) -> None:
-    """ Imports the pre-annotated tasks into the Label Studio NER project, a different project than the OCR one. """
-    from dotenv import load_dotenv
-
-    from src.utils.labelstudio_preannotate.client import LabelStudioClient
-
-    load_dotenv()
-    token, project = os.environ.get("LS_TOKEN"), os.environ.get("LS_NER_PROJECT_ID")
-    if not token or not project:
-        raise SystemExit("Set LS_TOKEN and LS_NER_PROJECT_ID (and LS_URL) in the .env file, see .env.example")
-
-    client = LabelStudioClient(os.environ.get("LS_URL", "http://localhost:8080"), token, int(project))
-    for check in client.health_check():
-        logger.info("%s: %s %s", check.label, "ok" if check.ok else "FAILED", check.detail)
-    client.import_tasks(tasks)
-    logger.info("Imported %d tasks into Label Studio project %s", len(tasks), project)
-
-
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)
-    if args.labelstudio_config:
-        print(labelstudio_config(load_labels(args.schema)))
-        return 0
     if args.output is None and args.text is None:
         build_parser().error("one of the arguments --output --text is required")
     extractor = make_extractor(args)
@@ -195,7 +159,6 @@ def main(argv: list[str] | None = None) -> int:
     ok = [folder for folder, _ in loaded]
     results = [extractor.build_result(record) for record in extractor.extract_blocks([data for _, data in loaded])]
 
-    tasks = []
     for folder, result in zip(ok, results):
         if not args.dry_run:
             extractor.save(folder, result)
@@ -203,13 +166,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.show:
             print(folder.name)
             print_record(result)
-        tasks.extend(extractor.to_labelstudio_tasks(result))
 
-    if args.labelstudio:
-        args.labelstudio.write_text(json.dumps(tasks, ensure_ascii=False, indent=2), encoding="utf-8")
-        logger.info("Wrote %d Label Studio tasks to %s", len(tasks), args.labelstudio)
-    if args.commit:
-        commit_to_labelstudio(tasks)
     logger.info("Done: %d records, %d failed", len(folders), failed)
     return 1 if failed else 0
 

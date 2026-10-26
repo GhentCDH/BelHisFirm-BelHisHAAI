@@ -1,5 +1,5 @@
 """ Turns a Label Studio export of corrected entity pre-annotations into GLiNER training data, and merges it with
-    the data you already have. This closes the loop: pre-annotate (cli --labelstudio --commit), correct in Label
+    the data you already have. This closes the loop: pre-annotate (labelstudio_cli --commit), correct in Label
     Studio, export as JSON, convert, retrain with gliner_train --data-dir.
 
     uv run python -m src.processors.text_processor.gliner_convert --export ls_export.json \\
