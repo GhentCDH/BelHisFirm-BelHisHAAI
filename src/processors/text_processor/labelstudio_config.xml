@@ -1,0 +1,92 @@
+<View>
+  <!-- Global Style -->
+  <Style>
+    .htx-text {
+      font-size: 16px;
+      line-height: 1.8;
+      padding: 10px;
+    }
+    .labels-group {
+      margin-bottom: 10px;
+      border-bottom: 1px solid #eee;
+      padding-bottom: 6px;
+    }
+    .group-title {
+      font-weight: bold;
+      margin-bottom: 4px;
+      color: #444;
+    }
+    .context {
+      color: #888;
+      font-size: 14px;
+      line-height: 1.6;
+      padding: 6px 10px;
+      border-left: 3px solid #ddd;
+    }
+  </Style>
+  <!-- Main Layout -->
+  <View style="display:flex; gap:20px;">
+    <!-- Text Panel: the text to annotate, with the text around it (not annotated) for context -->
+    <View style="flex:3; border-bottom:1px solid #ddd; padding-right:15px;">
+      <View className="context">
+        <Text name="context_before" value="$context_before"/>
+      </View>
+      <Text name="text" value="$text"/>
+      <View className="context">
+        <Text name="context_after" value="$context_after"/>
+      </View>
+    </View>
+    <!-- Labels Panel -->
+    <View style="flex:1; max-height:90vh; overflow:auto; padding-left:10px;">
+      <Labels name="label" toName="text" showInline="true">
+        <!-- ================= Temporal ================= -->
+        <View className="labels-group">
+          <View className="group-title">Temporal</View>
+          <Label value="date" background="#FFA07A" hotkey="1"/>
+          <Label value="time_period" background="#FF8C69" hotkey="2"/>
+        </View>
+        <!-- ================= Organization ================= -->
+        <View className="labels-group">
+          <View className="group-title">Organization</View>
+          <Label value="organization_name" background="#87CEEB" hotkey="3"/>
+          <Label value="corporate_body" background="#87CEEB" hotkey="4"/>
+          <Label value="legal_structure" background="#B0E0E6" hotkey="5"/>
+          <Label value="business_activity" background="#ADD8E6" hotkey="6"/>
+          <Label value="office_type" background="#4682B4" hotkey="7"/>
+        </View>
+        <!-- ================= Legal/Document ================= -->
+        <View className="labels-group">
+          <View className="group-title">Legal/Document</View>
+          <Label value="legal_act" background="#6495ED" hotkey="8"/>
+          <Label value="deed_number" background="#5B8DBE" hotkey="9"/>
+          <Label value="archive_reference" background="#D3D3D3" hotkey="a"/>
+        </View>
+        <!-- ================= Person ================= -->
+        <View className="labels-group">
+          <View className="group-title">Person</View>
+          <Label value="person" background="#FFD700" hotkey="z"/>
+          <Label value="honorific_title" background="#FFECB3" hotkey="e"/>
+          <Label value="occupation" background="#FFA500" hotkey="r"/>
+          <Label value="corporate_position" background="#FFB347" hotkey="t"/>
+        </View>
+        <!-- ================= Share/Capital ================= -->
+        <View className="labels-group">
+          <View className="group-title">Share/Capital</View>
+          <Label value="number_of_shares" background="#98FB98" hotkey="y"/>
+          <Label value="number_of_votes" background="#98FB98" hotkey="h"/>
+          <Label value="share_class" background="#90EE90" hotkey="u"/>
+          <Label value="share_nominal_value" background="#00FA9A" hotkey="i"/>
+          <Label value="capital_category" background="#32CD32" hotkey="o"/>
+        </View>
+        <!-- ================= Location ================= -->
+        <View className="labels-group">
+          <View className="group-title">Location</View>
+          <Label value="country" background="#FFB6C1" hotkey="p"/>
+          <Label value="city" background="#FFC0CB" hotkey="k"/>
+          <Label value="street_address" background="#FFE4E1" hotkey="l"/>
+          <Label value="building_name" background="#FF69B4" hotkey="m"/>
+        </View>
+      </Labels>
+    </View>
+  </View>
+</View>

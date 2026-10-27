@@ -17,7 +17,9 @@
     pipeline: one subfolder per record with page_NNN.jpg and/or ocr_data.json. The OCR (YOLO layout + GLM-OCR, the
     models and checkpoints of the OCR stage) runs for the records without ocr_data.json, or for all with --redo-ocr.
     Nothing is written into the input folder. The project needs a `text` Text tag and a `label` Labels tag with the
-    labels of the schema (project 120 has them, --print-config prints the config). LS_URL and LS_TOKEN come from the
+    labels of the schema (project 120 has them, --print-config prints the config).
+    The text around each detection on its page (--context-chars) goes along as `context_before` and `context_after`,
+    shown by that config above and below the text, not annotated. LS_URL and LS_TOKEN come from the
     .env file in the repo root (see .env.example, never pass the token on the CLI), without --project
     LS_NER_PROJECT_ID is used.
 """
@@ -33,7 +35,8 @@ from pathlib import Path
 import requests
 
 from src.processors.text_processor.cli import add_model_arguments, make_extractor
-from src.processors.text_processor.entity_extractor import DEFAULT_SPLIT, TEXT_LABELS, EntityExtractor, labelstudio_config, load_labels
+from src.processors.text_processor.entity_extractor import (DEFAULT_CONTEXT_CHARS, DEFAULT_SPLIT, TEXT_LABELS, EntityExtractor, labelstudio_config,
+                                                         load_labels)
 from src.processors.text_processor.ocr_input import Source, discover, keep_pages, run_ocr, select_pages
 from src.utils.labelstudio_preannotate.client import LabelStudioClient
 
@@ -60,6 +63,9 @@ def build_parser() -> argparse.ArgumentParser:
                         default=[f"{label}={parts}" for label, parts in DEFAULT_SPLIT.items()],
                         help="How the detections per page are divided over the layout labels, a label with too few "
                              "leaves its places to the others (default: %(default)s)")
+    parser.add_argument("--context-chars", type=int, default=DEFAULT_CONTEXT_CHARS,
+                        help="Characters of the text before and after a detection on its page, sent along as context "
+                             "to read it in (0 = none, default: %(default)s)")
     parser.add_argument("--max-pages", type=int, default=0,
                         help="At most this many pages over the whole input, a random pick that is the same every run "
                              "(0 = all, default: %(default)s)")
@@ -146,11 +152,12 @@ def collect_tasks(args: argparse.Namespace, sources: list[Source]) -> list[dict]
         extractor = EntityExtractor.__new__(EntityExtractor)
         extractor.block_labels, extractor.model_name, extractor.adapters = block_labels(args), "none", {}
         extractor.max_blocks_per_page, extractor.split = max_per_page(args), split(args)
+        extractor.context_chars = args.context_chars
         records = [{"record_id": data.get("record_id"), "record_title": data.get("record_title"),
                     "blocks": [{**block, "entities": []} for block in extractor.build_blocks(data)]} for data in ocr_data]
     else:
         extractor = make_extractor(args, block_labels=block_labels(args), max_blocks_per_page=max_per_page(args),
-                                   split=split(args))
+                                   split=split(args), context_chars=args.context_chars)
         records = extractor.extract_blocks(ocr_data)
 
     tasks = []
@@ -165,7 +172,7 @@ def main(argv: list[str] | None = None) -> int:
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
     if args.print_config:
-        print(labelstudio_config(load_labels(args.schema)))
+        print(labelstudio_config())
         return 0
     if args.input is None and args.from_tasks is None:
         build_parser().error("--input or --from-tasks is required")

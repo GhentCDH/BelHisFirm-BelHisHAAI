@@ -16,6 +16,9 @@ DEFAULT_MODEL = "fastino/gliner2.5-multi-v1"
 # Trained with gliner_train on the same architecture as DEFAULT_MODEL, used when it exists (gitignored, not in the repo)
 DEFAULT_ADAPTER_DIR = Path("model/gliner/adapters/v25")
 SCHEMA_PATH = Path(__file__).with_name("gliner_schema_BelHisFirm.json")
+CONFIG_PATH = Path(__file__).with_name("labelstudio_config.xml")
+# How many characters of the text before and after a detection are sent to Label Studio as context
+DEFAULT_CONTEXT_CHARS = 400
 OCR_FILE = "ocr_data.json"
 ENTITIES_FILE = "entities.json"
 SINGLE_ADAPTER = "single"
@@ -41,13 +44,11 @@ def load_labels(schema_path: Path = SCHEMA_PATH) -> dict[str, dict]:
     return json.loads(Path(schema_path).read_text(encoding="utf-8"))["entities"]
 
 
-def labelstudio_config(labels: dict[str, dict]) -> str:
-    """ Label Studio labeling config for the NER project the pre-annotations go to (`label` on `text`, as in the
-        training data export). Paste it into the project's Labeling Interface > Code. """
-    lines = ["<View>", '  <Labels name="label" toName="text">']
-    lines += [f'    <Label value="{label}"/>' for label in labels]
-    lines += ["  </Labels>", '  <Text name="text" value="$text"/>', "</View>"]
-    return "\n".join(lines)
+def labelstudio_config() -> str:
+    """ Label Studio labeling config for the NER project the pre-annotations go to: a `label` Labels tag on a `text`
+        Text tag (as in the training data export), grouped labels, and the text around the detection as read-only
+        context. Paste it into the project's Labeling Interface > Code. """
+    return CONFIG_PATH.read_text(encoding="utf-8")
 
 
 def box_area(item: dict) -> float:
@@ -87,13 +88,27 @@ def find_adapter(path: Path) -> Path | None:
     return None
 
 
+def context_around(texts: list[str], index: int, chars: int) -> tuple[str, str]:
+    """ (before, after): the last `chars` characters of the texts before texts[index] and the first `chars` of the
+        texts after it, cut at a space and marked with an ellipsis where text is left out. """
+    before = " ".join(texts[:index])
+    after = " ".join(texts[index + 1:])
+    if len(before) > chars:
+        before = "… " + before[-chars:].partition(" ")[2]
+    if len(after) > chars:
+        after = after[:chars].rpartition(" ")[0] + " …"
+    return before, after
+
+
 class EntityExtractor:
     """ Loads GLiNER once (plus its adapters) and extracts entities from strings, blocks or record folders. """
+
+    context_chars = DEFAULT_CONTEXT_CHARS
 
     def __init__(self, model_name: str = DEFAULT_MODEL, device: str = "cuda", adapter_dir: Path | None = None,
                  schema_path: Path = SCHEMA_PATH, threshold: float | None = None,
                  block_labels: tuple[str, ...] | None = TEXT_LABELS, max_blocks_per_page: int | None = None,
-                 split: dict[str, float] | None = None) -> None:
+                 split: dict[str, float] | None = None, context_chars: int = DEFAULT_CONTEXT_CHARS) -> None:
         """ threshold: minimum confidence for every label, the per-label thresholds of the schema when left out.
             block_labels: Which detections of the OCR (YOLO layout labels) are read, None for all of them.
             max_blocks_per_page: At most this many detections per page, the largest ones by surface, divided over
@@ -105,6 +120,7 @@ class EntityExtractor:
         self.block_labels = block_labels
         self.max_blocks_per_page = max_blocks_per_page
         self.split = split
+        self.context_chars = context_chars
         self.labels = load_labels(schema_path)
         self.adapter_dir = Path(adapter_dir) if adapter_dir else None
 
@@ -194,16 +210,23 @@ class EntityExtractor:
     def build_blocks(self, ocr_data: dict) -> list[dict]:
         """ The detections (text blocks) with OCR text of all pages of an ocr_data.json structure, in reading order,
             with where they are. block_index is the position in the page of ocr_data.json, also when only some of
-            the detections of a page are taken. """
+            the detections of a page are taken. context_before/context_after are the text around the detection on
+            the page (every detection with text, also those that are not taken), only to show, never read by GLiNER. """
         blocks = []
         for page_idx, page in enumerate(ocr_data.get("pages", [])):
-            page_blocks = [
-                {"text": block["text"].strip(), "page": page_idx, "block_index": block_idx, "bbox": block.get("bbox"),
-                 "label": block.get("label"), "column": block.get("column")}
-                for block_idx, block in enumerate(page.get("blocks", []))
-                if (self.block_labels is None or block.get("label") in self.block_labels)
-                and (block.get("text") or "").strip()
-            ]
+            texts = [(block_idx, block["text"].strip()) for block_idx, block in enumerate(page.get("blocks", []))
+                     if (block.get("text") or "").strip()]
+            page_texts = [text for _, text in texts]
+            position = {block_idx: number for number, (block_idx, _) in enumerate(texts)}
+            page_blocks = []
+            for block_idx, block in enumerate(page.get("blocks", [])):
+                if (self.block_labels is not None and block.get("label") not in self.block_labels) or block_idx not in position:
+                    continue
+                before, after = context_around(page_texts, position[block_idx], self.context_chars)
+                page_blocks.append(
+                    {"text": page_texts[position[block_idx]], "page": page_idx, "block_index": block_idx,
+                     "bbox": block.get("bbox"), "label": block.get("label"), "column": block.get("column"),
+                     "context_before": before, "context_after": after})
             blocks.extend(pick_largest(page_blocks, self.max_blocks_per_page, self.split))
         return blocks
 
@@ -251,12 +274,14 @@ class EntityExtractor:
         """ One Label Studio task per detection (text block) of a record, in reading order, with the entities as
             pre-annotations. Detections without entities are tasks too, to find what the model missed. The `source`
             in the task data identifies the detection, to leave out what is already in the project.
-            Same labeling config as the training data: a `label` Labels tag on a `text` Text tag. """
+            Same labeling config as the training data: a `label` Labels tag on a `text` Text tag, the context is shown
+            around it by the config. """
         version = "+".join([self.model_name, *self.adapters]) if self.adapters else self.model_name
         tasks = []
         for block in result["blocks"]:
             task = {"data": {
-                "text": block["text"], "source": f"{record_folder}/page_{block['page'] + 1:03d}/block_{block['block_index']:03d}",
+                "text": block["text"], "context_before": block.get("context_before", ""),
+                "context_after": block.get("context_after", ""), "source": f"{record_folder}/page_{block['page'] + 1:03d}/block_{block['block_index']:03d}",
                 "record_id": result["record_id"], "record_title": result["record_title"], "record_folder": record_folder,
                 "page": block["page"] + 1, "block_index": block["block_index"], "bbox": block["bbox"],
                 "yolo_label": block["label"], "column": block["column"]}}
