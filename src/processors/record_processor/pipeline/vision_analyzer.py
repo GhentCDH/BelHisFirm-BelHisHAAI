@@ -38,14 +38,20 @@ class VisionAnalyzer:
         """
 
         regions = []
-        for result in self.yolo_model.predict(image, stream=True):
-            for mapped_prediction in ResultProcessor.process_result(result):
+        for result in self.yolo_model.predict(image, conf=self.config.yolo_confidence, stream=True):
+            for mapped_prediction in self.confident_enough(ResultProcessor.process_result(result)):
                 regions.append({
                     "bbox": [int(c) for c in mapped_prediction.bbox],
                     "label": mapped_prediction.label,
                     "confidence": float(mapped_prediction.confidence),
                 })
         return regions
+
+    def confident_enough(self, predictions: list[MappedPrediction]) -> list[MappedPrediction]:
+        """ PREDICTIONS without those below their label's threshold in yolo_label_confidence. """
+
+        thresholds = self.config.yolo_label_confidence
+        return [p for p in predictions if p.confidence >= thresholds.get(p.label, 0.0)]
 
     def find_header_candidates(self, image: Image.Image, regions: list[dict]) -> list[list[int]]:
         """ Finds the regions that could be a record header among the layout regions of a given image.
@@ -187,10 +193,10 @@ class VisionAnalyzer:
         mapped_predictions = []
 
         for image, region_x_offset in zip(images, offsets):
-            results = self.yolo_model.predict(image, stream=True)
+            results = self.yolo_model.predict(image, conf=self.config.yolo_confidence, stream=True)
 
             for result in results:
-                mapped_prediction = ResultProcessor.process_result(result, x1 + region_x_offset, y1)
+                mapped_prediction = self.confident_enough(ResultProcessor.process_result(result, x1 + region_x_offset, y1))
 
                 mapped_predictions.extend(mapped_prediction)
 

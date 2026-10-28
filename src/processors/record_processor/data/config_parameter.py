@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 @dataclass
 class ConfigParameter:
@@ -10,3 +10,6 @@ class ConfigParameter:
     skip_ocr: bool
     ocr_excluded_labels: set[str]
     header_candidate_labels: set[str]
+    # YOLO keeps regions from this confidence up, except for the labels in yolo_label_confidence, which need more
+    yolo_confidence: float = 0.25
+    yolo_label_confidence: dict[str, float] = field(default_factory=lambda: {"Text": 0.55})
