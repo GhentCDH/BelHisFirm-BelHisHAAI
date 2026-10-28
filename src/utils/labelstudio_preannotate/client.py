@@ -14,7 +14,7 @@ exactly one data key, so that restriction doesn't apply here.
 
 Separately, Label Studio's direct upload also validates the file extension
 and rejects some outright (confirmed live: ".tif extension is not
-supported") — see _upload_payload for the PNG transcoding that works around it.
+supported") — see _upload_payload for the JPEG transcoding that works around it.
 """
 
 from __future__ import annotations
@@ -35,20 +35,25 @@ _SERVER_PATHS_RETRY_DELAY_SECONDS = 1.5
 # instance: uploading a .tif returned {"non_field_errors": [".tif extension
 # is not supported"]}). Browsers can't render TIFF/BMP natively either, so
 # even a format LS did accept wouldn't display in the labeling UI. Anything
-# outside this safe set is transcoded to PNG in memory before upload.
+# outside this safe set is transcoded to JPEG in memory before upload.
 _WEB_SAFE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif"}
+
+# Scanned TIFF pages can be 50+ MB, and a lossless PNG of one is hardly smaller. A JPEG at this quality
+# keeps the pixel dimensions (so pre-annotated boxes still line up) and brings a page down to a few MB.
+_TRANSCODE_JPEG_QUALITY = 80
 
 
 def _upload_payload(path: Path) -> tuple[bytes, str]:
     """Return (bytes, filename) to send for PATH's upload — the raw file
-    as-is if its extension is web-safe, otherwise transcoded to PNG.
+    as-is if its extension is web-safe, otherwise transcoded to a JPEG of
+    the same width and height.
     """
     if path.suffix.lower() in _WEB_SAFE_EXTENSIONS:
         return path.read_bytes(), path.name
     buf = io.BytesIO()
     with Image.open(path) as im:
-        im.convert("RGB").save(buf, format="PNG")
-    return buf.getvalue(), f"{path.stem}.png"
+        im.convert("RGB").save(buf, format="JPEG", quality=_TRANSCODE_JPEG_QUALITY, optimize=True)
+    return buf.getvalue(), f"{path.stem}.jpg"
 
 
 @dataclass
@@ -72,7 +77,7 @@ class LabelStudioClient:
     def upload_images(self, paths: list[Path]) -> dict[str, str]:
         """Upload PATHS to Label Studio's file storage without creating tasks
         (commit_to_project=false). Files with an extension LS's upload
-        rejects (or a browser can't render) are transcoded to PNG first —
+        rejects (or a browser can't render) are transcoded to JPEG first —
         see _upload_payload.
 
         One file per request: Label Studio's import endpoint only registers
@@ -81,7 +86,7 @@ class LabelStudioClient:
 
         Returns {original_filename: "/data/upload/{project}/{stored_name}"},
         keyed by each path's *original* filename even where the upload itself
-        was renamed to a converted .png.
+        was renamed to a converted .jpg.
         """
         if not paths:
             raise ValueError("No images to upload")

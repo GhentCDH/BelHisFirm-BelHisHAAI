@@ -32,6 +32,8 @@ Usage:
     uv run python -m src.utils.labelstudio_preannotate.preannotate_regions --pages /path/to/images --commit
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import os
@@ -41,16 +43,23 @@ import re
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from dotenv import load_dotenv
 
-from src.processors.record_processor import OCRProcessor
-from src.processors.record_processor.pipeline import IOManager, VisionAnalyzer
-from src.processors.record_processor.record_processor import RecordProcessor
 from src.utils.labelstudio_preannotate.client import LabelStudioClient
 from src.utils.labelstudio_preannotate.convert_ocr import text_to_prediction
+from src.utils.labelstudio_preannotate.stage_markers import announce_stage
+
+# The pipeline is imported where it is used, so the dashboard can read DEFAULT_LABELS from here without loading torch
+if TYPE_CHECKING:
+    from src.processors.record_processor.record_processor import RecordProcessor
 
 _LS_URL_DEFAULT = "http://localhost:8080"
+
+# Same default as the pipeline CLI (src/processors/record_processor/cli.py), "base" forces the base GLM-OCR model
+DEFAULT_GLM_CHECKPOINT = Path("model/glm-ocr")
+BASE_GLM_CHECKPOINT = "base"
 
 RECORD_HEADER_LABEL = "Record-header"
 # Looser than the pipeline's header check, which also wants a dash: the headers it misses belong here too
@@ -78,6 +87,9 @@ def sample_regions(processor: RecordProcessor, page_paths: list[Path], labels: l
         of a label from one page so the sample is spread over the pages. A page is 50+ MB in memory,
         so its crops are read and saved before the next page is opened.
     """
+
+    from src.processors.record_processor import OCRProcessor
+    from src.processors.record_processor.pipeline import VisionAnalyzer
 
     manager = processor.record_manager
     header_labels = processor.config.header_candidate_labels
@@ -155,8 +167,9 @@ def main() -> None:
                         help="Stop after this many pages, also when a label is still short of crops (default: %(default)s)")
     parser.add_argument("--seed", type=int, default=0, help="Random seed for the sample")
     parser.add_argument("--weights", type=Path, default=Path("model/best.pt"), help="YOLO layout model weights")
-    parser.add_argument("--glm-checkpoint", type=Path, default=None,
-                        help="GLM-OCR checkpoint for the OCR guess (default: the base GLM-OCR model)")
+    parser.add_argument("--glm-checkpoint", default=None,
+                        help=f"GLM-OCR checkpoint for the OCR guess, '{BASE_GLM_CHECKPOINT}' for the base GLM-OCR model "
+                             f"(default: {DEFAULT_GLM_CHECKPOINT} if present, else the base model)")
     parser.add_argument("--crops-dir", type=Path, default=Path("ocr_preanno_crops"), help="Local directory to save the sampled crops to")
     parser.add_argument("--exclude-dir", type=Path,
                         help="Directory of crops from a previous round, matched by filename suffix so they are never sampled again")
@@ -171,6 +184,13 @@ def main() -> None:
     parser.add_argument("--commit", action="store_true", help="Actually upload images and import into Label Studio. Default: dry-run, only writes --tasks-json")
     args = parser.parse_args()
 
+    if args.glm_checkpoint is None:
+        args.glm_checkpoint = DEFAULT_GLM_CHECKPOINT if DEFAULT_GLM_CHECKPOINT.exists() else None
+    elif args.glm_checkpoint == BASE_GLM_CHECKPOINT:
+        args.glm_checkpoint = None
+    else:
+        args.glm_checkpoint = Path(args.glm_checkpoint)
+
     if not args.pages.exists():
         raise SystemExit(f"{args.pages} not found")
     if not args.weights.exists():
@@ -183,6 +203,9 @@ def main() -> None:
         raise SystemExit("--project-id (or LS_PROJECT_ID) is required to --commit")
     if args.commit and not args.ls_token:
         raise SystemExit("--ls-token (or LS_TOKEN) is required to --commit")
+
+    from src.processors.record_processor.pipeline import IOManager
+    from src.processors.record_processor.record_processor import RecordProcessor
 
     model_version = args.model_version or f"{args.glm_checkpoint.name if args.glm_checkpoint else 'glm-ocr-base'}-preanno"
     excluded_names = [p.name for p in args.exclude_dir.glob("*.png")] if args.exclude_dir else []
@@ -197,20 +220,25 @@ def main() -> None:
     processor = RecordProcessor(skip_ocr=True, skip_tables=True, yolo_model_path=str(args.weights),
                                 glm_checkpoint=str(args.glm_checkpoint) if args.glm_checkpoint else None)
 
+    announce_stage("sample", "start")
+    print(f"Sampling {', '.join(args.labels)} from {len(page_paths)} page(s), GLM-OCR: {args.glm_checkpoint or 'base model'}...")
     args.crops_dir.mkdir(parents=True, exist_ok=True)
     crops = sample_regions(processor, page_paths, args.labels, args.per_label, args.per_page,
                            args.crops_dir, excluded_names, rng)
     if not crops:
         raise SystemExit(f"No {args.labels} regions found under {args.pages}")
     print(f"Sampled {len(crops)} crop(s): " + ", ".join(f"{label} {count}" for label, count in Counter(crop.label for crop in crops).items()))
+    announce_stage("sample", "done")
 
     guesses = {crop.path: crop.guess for crop in crops}
     crop_paths = [crop.path for crop in crops]
 
     if args.commit:
+        announce_stage("upload", "start")
         client = LabelStudioClient(args.ls_url, args.ls_token, args.project_id)
         print(f"Uploading {len(crop_paths)} image(s) to Label Studio project {args.project_id}...")
         server_paths = client.upload_images(crop_paths)
+        announce_stage("upload", "done")
     else:
         client = None
         server_paths = {p.name: f"<not uploaded — dry run>/{p.name}" for p in crop_paths}
@@ -230,10 +258,13 @@ def main() -> None:
         print(f"WARNING: {len(missing)} image(s) failed to upload and were skipped: {missing[:10]}")
 
     if args.commit:
+        announce_stage("import", "start")
         result = client.import_tasks(tasks)
         print(f"Imported into Label Studio project {args.project_id}: {result}")
+        announce_stage("import", "done")
+        print("Pre-annotation complete.")
     else:
-        print(f"Dry run — inspect {args.tasks_json} and {args.crops_dir}, then re-run with --commit to import.")
+        print(f"Dry run complete — inspect {args.tasks_json} and {args.crops_dir}, then SEND (or re-run with --commit) to import.")
 
 
 if __name__ == "__main__":

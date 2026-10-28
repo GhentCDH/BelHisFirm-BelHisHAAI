@@ -1,0 +1,7 @@
+<View>
+  <Image name="image" value="$image"/>
+  <RectangleLabels name="label" toName="image">
+    
+    
+  <Label value="Caption" background="#FFA39E"/><Label value="Footnote" background="#D4380D"/><Label value="Formula" background="#FFC069"/><Label value="List-item" background="#AD8B00"/><Label value="Page-footer" background="#D3F261"/><Label value="Page-header" background="#389E0D"/><Label value="Picture" background="#5CDBD3"/><Label value="Section-header" background="#096DD9"/><Label value="Table" background="#ADC6FF"/><Label value="Text" background="#9254DE"/><Label value="Title" background="#F759AB"/></RectangleLabels>
+</View>
