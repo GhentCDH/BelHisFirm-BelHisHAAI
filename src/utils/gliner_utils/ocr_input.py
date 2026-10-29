@@ -13,7 +13,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from src.processors.text_processor.entity_extractor import OCR_FILE, pick_largest
+from src.utils.gliner_utils.blocks import OCR_FILE, pick_largest
 
 logger = logging.getLogger(__name__)
 

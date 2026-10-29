@@ -77,6 +77,7 @@
           <Label value="share_class" background="#90EE90" hotkey="u"/>
           <Label value="share_nominal_value" background="#00FA9A" hotkey="i"/>
           <Label value="capital_category" background="#32CD32" hotkey="o"/>
+          <Label value="capital_numerical_value" background="#3CB371" hotkey="n"/>
         </View>
         <!-- ================= Location ================= -->
         <View className="labels-group">

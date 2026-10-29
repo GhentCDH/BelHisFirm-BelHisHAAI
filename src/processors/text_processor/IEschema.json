@@ -95,7 +95,8 @@
       "description": "A person holds a specific honorific title.",
       "head": "person",
       "tail": "honorific_title",
-      "max_per_head": 1
+      "max_per_head": 1,
+      "max_per_tail": 1
     },
     {
       "name": "resides_at",
@@ -235,21 +236,24 @@
       "description": "A capital category has a specific numerical value.",
       "head": "capital_category",
       "tail": "capital_numerical_value",
-      "max_per_head": 1
+      "max_per_head": 1,
+      "max_per_tail": 1
     },
     {
       "name": "has_nominal_value",
       "description": "A share class has a specific nominal value.",
       "head": "share_class",
       "tail": "share_nominal_value",
-      "max_per_head": 1
+      "max_per_head": 1,
+      "max_per_tail": 1
     },
     {
       "name": "shares_of_class",
       "description": "A number of shares belongs to a specific share class.",
       "head": "number_of_shares",
       "tail": "share_class",
-      "max_per_head": 1
+      "max_per_head": 1,
+      "max_per_tail": 1
     },
     {
       "name": "concerns",
@@ -269,7 +273,8 @@
       "description": "A legal act has a specific deed number.",
       "head": "legal_act",
       "tail": "deed_number",
-      "max_per_head": 1
+      "max_per_head": 1,
+      "max_per_tail": 1
     },
     {
       "name": "recorded_in",

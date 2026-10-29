@@ -1,41 +1,74 @@
 import json
+from functools import lru_cache
 from pathlib import Path
 
 from gliner2.joint_ie import JointIE, JointIEConfig
 
 SCHEMA_PATH = Path(__file__).parent / "IEschema.json"
 
-joint = JointIE.from_pretrained("fastino/gliner2.5-multi-v1")
 
 
-def build_schema(path=SCHEMA_PATH):
+DEFAULT_MODEL = "fastino/gliner2.5-multi-v1"
+
+
+def find_adapter(path):
+    """ The folder with the adapter files: the folder itself, or the trainer's final/ checkpoint inside it. """
+    for candidate in (Path(path), Path(path) / "final"):
+        if (candidate / "adapter_config.json").exists():
+            return candidate
+    raise FileNotFoundError(f"No LoRA adapter in {path}")
+
+
+@lru_cache(maxsize=2)
+def get_joint(adapter=None, model_name=DEFAULT_MODEL):
+    """ The Joint IE model, with a LoRA adapter (trained with gliner_train) merged into it when given. """
+    if adapter is None:
+        return JointIE.from_pretrained(model_name)
+
+    from gliner2 import AutoExtractor
+    from peft import PeftModel
+
+    model = AutoExtractor.from_pretrained(model_name)
+    model = PeftModel.from_pretrained(model, str(find_adapter(adapter))).merge_and_unload()
+    return JointIE(model)
+
+
+def build_schema(path=SCHEMA_PATH, adapter=None):
     """Build a JointIE schema from IEschema.json."""
     spec = json.loads(Path(path).read_text(encoding="utf-8"))
-    schema = joint.create_schema().entities(
-        {name: e["description"] for name, e in spec["entities"].items()}
-    )
+    # pass the full entity dicts so options such as allow_nested are applied
+    schema = get_joint(adapter).create_schema().entities(spec["entities"])
     for rel in spec["relations"]:
         schema = schema.relation(
             rel["name"],
             head=rel["head"],
             tail=rel["tail"],
+            description=rel.get("description"),
             directed=rel.get("directed", True),
             allow_self=rel.get("allow_self", False),
             max_per_head=rel.get("max_per_head"),
+            max_per_tail=rel.get("max_per_tail"),
             threshold=rel.get("threshold"),
         )
     return schema
 
 
-def extract(text, schema=None):
+def extract(text, schema=None, adapter=None):
     """Jointly extract entities and relations from text. Returns a dict."""
-    schema = schema or build_schema()
-    result = joint.extract(
-        text, schema, config=JointIEConfig(optimizer="beam", beam_size=32)
+    schema = schema or build_schema(adapter=adapter)
+    result = get_joint(adapter).extract(
+        text,
+        schema,
+        config=JointIEConfig(optimizer="beam", beam_size=32, top_k_entities=64),
     )
+    out = result.to_dict()
+    out["feasible"] = result.feasible
     if not result.feasible:
-        print("Constraints could not be satisfied.")
-    return result.to_dict()
+        print("Constraints could not be satisfied; an empty graph does not mean no facts.")
+    for e in out["entities"]:
+        if text[e["start"]:e["end"]] != e["text"]:
+            raise ValueError(f"Span mismatch for {e['text']!r} at {e['start']}:{e['end']}")
+    return out
 
 
 RESET = "\033[0m"

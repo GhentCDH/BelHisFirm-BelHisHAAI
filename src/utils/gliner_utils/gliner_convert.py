@@ -2,10 +2,10 @@
     the data you already have. This closes the loop: pre-annotate (labelstudio_cli --commit), correct in Label
     Studio, export as JSON, convert, retrain with gliner_train --data-dir.
 
-    uv run python -m src.processors.text_processor.gliner_convert --export ls_export.json \\
+    uv run python -m src.utils.gliner_utils.gliner_convert --export ls_export.json \\
         --merge model/gliner/data --out model/gliner/data_round2
 
-    The merged train.json and train_<domain>.json go to --out, the data you merge with is not changed. test.json is
+    The merged train.json goes to --out, the data you merge with is not changed. test.json is
     copied unchanged, so the scores of the rounds stay comparable (new data is never added to it).
 
     Both export shapes are read: the Label Studio JSON export (data.text, annotations[].result) and the flat one
@@ -19,7 +19,8 @@ import shutil
 import sys
 from pathlib import Path
 
-from src.processors.text_processor.entity_extractor import DOMAINS, SCHEMA_PATH, load_labels
+from src.processors.text_processor.entity_extractor import SCHEMA_PATH
+from src.utils.gliner_utils.blocks import load_labels
 
 logger = logging.getLogger(__name__)
 
@@ -55,12 +56,6 @@ def convert_export(tasks: list[dict], labels: list[str]) -> list[dict]:
     return samples
 
 
-def domain_samples(samples: list[dict], labels: list[str]) -> list[dict]:
-    """ The samples with an entity in these labels, reduced to those labels (as the tutorial notebook does). """
-    return [{"text": s["text"], "entities": {label: s["entities"].get(label, []) for label in labels}}
-            for s in samples if any(s["entities"].get(label) for label in labels)]
-
-
 def write(path: Path, samples: list[dict]) -> None:
     path.write_text(json.dumps(samples, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -84,6 +79,9 @@ def main(argv: list[str] | None = None) -> int:
     test_texts = {s["text"] for s in json.loads((args.merge / "test.json").read_text(encoding="utf-8"))} \
         if args.merge and (args.merge / "test.json").exists() else set()
 
+    # Every label of the schema as a key, also in the data of earlier rounds (labels added since are empty there)
+    train = [{"text": s["text"], "entities": {label: s["entities"].get(label, []) for label in labels}} for s in train]
+
     known = {s["text"] for s in train}
     # A text that is already in the test set must stay out of the training data
     added = [s for s in new if s["text"] not in known and s["text"] not in test_texts]
@@ -93,8 +91,6 @@ def main(argv: list[str] | None = None) -> int:
 
     args.out.mkdir(parents=True, exist_ok=True)
     write(args.out / "train.json", train)
-    for domain, domain_labels in DOMAINS.items():
-        write(args.out / f"train_{domain}.json", domain_samples(train, domain_labels))
     if args.merge and (args.merge / "test.json").exists():
         shutil.copy(args.merge / "test.json", args.out / "test.json")
     logger.info("Wrote %s, train with: gliner_train --data-dir %s", args.out, args.out)

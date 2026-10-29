@@ -1,4 +1,4 @@
-""" Pre-annotates the detections of a folder with GLiNER2.5 and sends them to Label Studio, every detection (YOLO
+""" Pre-annotates the detections of a folder with GLiNER2.5 (Joint IE, optionally with a LoRA adapter from gliner_train, --adapter) and sends them to Label Studio, every detection (YOLO
     text block with its OCR text) as a task of its own, so the entities can be corrected there and used as training
     data (see gliner_convert). Only the Text and Section-header detections (--labels), at most 10 per page
     (--max-per-page): the largest ones by surface, 20% section headers and 80% texts (--split), and at most
@@ -6,12 +6,12 @@
     ocr_data.json yet.
 
     # Dry run: writes the tasks to labelstudio_ner_tasks.json
-    uv run python -m src.processors.text_processor.labelstudio_cli --input /path/to/pages --project 120
+    uv run python -m src.utils.gliner_utils.labelstudio_cli --input /path/to/pages --project 120
     # A few first, then everything: tasks that are already in the project are left out
-    uv run python -m src.processors.text_processor.labelstudio_cli --input /path/to/pages --project 120 --commit --limit 20
-    uv run python -m src.processors.text_processor.labelstudio_cli --input /path/to/pages --project 120 --commit
+    uv run python -m src.utils.gliner_utils.labelstudio_cli --input /path/to/pages --project 120 --commit --limit 20
+    uv run python -m src.utils.gliner_utils.labelstudio_cli --input /path/to/pages --project 120 --commit
     # Import the tasks of an earlier run, without reading the OCR again
-    uv run python -m src.processors.text_processor.labelstudio_cli --from-tasks labelstudio_ner_tasks.json --project 120 --commit
+    uv run python -m src.utils.gliner_utils.labelstudio_cli --from-tasks labelstudio_ner_tasks.json --project 120 --commit
 
     The input is a folder of page images (one record), a single page image, or the output folder of the record
     pipeline: one subfolder per record with page_NNN.jpg and/or ocr_data.json. The OCR (YOLO layout + GLM-OCR, the
@@ -34,10 +34,10 @@ from pathlib import Path
 
 import requests
 
-from src.processors.text_processor.cli import add_model_arguments, make_extractor
-from src.processors.text_processor.entity_extractor import (DEFAULT_CONTEXT_CHARS, DEFAULT_SPLIT, TEXT_LABELS, EntityExtractor, labelstudio_config,
-                                                         load_labels)
-from utils.gliner_utils.ocr_input import Source, discover, keep_pages, run_ocr, select_pages
+from src.processors.text_processor.entity_extractor import SCHEMA_PATH
+from src.utils.gliner_utils.blocks import (DEFAULT_CONTEXT_CHARS, DEFAULT_SPLIT, TEXT_LABELS, build_blocks, labelstudio_config,
+                                           load_labels, predict_blocks, to_labelstudio_tasks)
+from src.utils.gliner_utils.ocr_input import Source, discover, keep_pages, run_ocr, select_pages
 from src.utils.labelstudio_preannotate.client import LabelStudioClient
 
 logger = logging.getLogger(__name__)
@@ -81,7 +81,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--limit", type=int, default=None, help="Only the first N tasks (not in the project yet, with --commit)")
     parser.add_argument("--no-predictions", action="store_true", help="Plain tasks without entities, no model is loaded")
     parser.add_argument("--print-config", action="store_true", help="Print the labeling config for a new project and exit")
-    add_model_arguments(parser)
+    parser.add_argument("--adapter", type=Path, default=None,
+                        help="LoRA adapter trained with gliner_train (a folder, or its final/ checkpoint)")
+    parser.add_argument("--schema", type=Path, default=SCHEMA_PATH, help="IEschema.json, the entity types of the project")
     return parser
 
 
@@ -146,23 +148,15 @@ def split(args: argparse.Namespace) -> dict[str, float]:
 
 def collect_tasks(args: argparse.Namespace, sources: list[Source]) -> list[dict]:
     """ The tasks of every detection of these records, with the entities of GLiNER unless --no-predictions. """
-    ocr_data = [source.ocr_data for source in sources]
-    if args.no_predictions:
-        # No model: the blocks only, without entities
-        extractor = EntityExtractor.__new__(EntityExtractor)
-        extractor.block_labels, extractor.model_name, extractor.adapters = block_labels(args), "none", {}
-        extractor.max_blocks_per_page, extractor.split = max_per_page(args), split(args)
-        extractor.context_chars = args.context_chars
-        records = [{"record_id": data.get("record_id"), "record_title": data.get("record_title"),
-                    "blocks": [{**block, "entities": []} for block in extractor.build_blocks(data)]} for data in ocr_data]
-    else:
-        extractor = make_extractor(args, block_labels=block_labels(args), max_blocks_per_page=max_per_page(args),
-                                   split=split(args), context_chars=args.context_chars)
-        records = extractor.extract_blocks(ocr_data)
-
+    version = "none" if args.no_predictions else f"gliner2.5-joint{'+' + args.adapter.name if args.adapter else ''}"
     tasks = []
-    for source, record in zip(sources, records):
-        tasks.extend(extractor.to_labelstudio_tasks(record, source.name))
+    for source in sources:
+        blocks = build_blocks(source.ocr_data, block_labels(args), max_per_page(args), split(args), args.context_chars)
+        blocks = [{**block, "entities": []} for block in blocks] if args.no_predictions \
+            else predict_blocks(blocks, args.adapter)
+        record = {"record_id": source.ocr_data.get("record_id"), "record_title": source.ocr_data.get("record_title"),
+                  "blocks": blocks}
+        tasks.extend(to_labelstudio_tasks(record, source.name, version))
     return tasks
 
 

@@ -29,7 +29,7 @@ dependencies = [
     "geoparser>=0.3.1",
     "text2num>=3.1.0",
     "python-dotenv>=1.2.2",
-    "gliner2>=2.1.0",
+    "gliner2[train]>=2.1.0",
 ]
 
 [project.scripts]

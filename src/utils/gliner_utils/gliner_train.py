@@ -1,13 +1,15 @@
-""" Trains the BelHisFirm LoRA adapters for GLiNER2.5 (boundary architecture): one adapter per domain (see DOMAINS),
-    or one for all labels (--single).
+""" Trains a LoRA adapter for GLiNER2.5 (boundary architecture) on all entity types of IEschema.json. The adapter is
+    used by the Joint IE extractor (entity_extractor.get_joint(adapter)) and by labelstudio_cli --adapter.
 
-    uv run python -m src.processors.text_processor.gliner_train --out model/gliner/adapters/v25
-    uv run python -m src.processors.text_processor.gliner_train --out model/gliner/adapters/v25 --domains date person
-    uv run python -m src.processors.text_processor.gliner_train --out model/gliner/adapters/v25 --single
+    uv run python -m src.utils.gliner_utils.gliner_train --out model/gliner/adapters/v25_joint
+    uv run python -m src.utils.gliner_utils.gliner_train --data-dir model/gliner/data_round2 --out model/gliner/adapters/v25_round2
 
-    The data is the Label Studio export of the BelHisFirm annotations, converted by GLiNER2_LoRA_BelHisFirm.ipynb of
-    the ghentcdh-glinerv2-tutorial (train.json and train_<domain>.json), copied to model/gliner/data. New data made
-    with gliner_convert is used through --data-dir.
+    A part of train.json (--val-split, 10%) is held out as validation set: the eval loss is computed every epoch, the
+    best epoch is saved to <out>/best and training stops early when it stops improving. Score the adapter on the
+    untouched test.json with gliner_eval.
+
+    The data is train.json of the data folder, made by gliner_convert from the Label Studio export (the older
+    data is model/gliner/data, copied from the ghentcdh-glinerv2-tutorial). The last epoch is saved to <out>/final.
 """
 
 import argparse
@@ -15,10 +17,11 @@ import gc
 import json
 import logging
 import os
+import random
 import sys
 from pathlib import Path
 
-from src.processors.text_processor.entity_extractor import DEFAULT_MODEL, DOMAINS, SINGLE_ADAPTER
+from src.processors.text_processor.entity_extractor import DEFAULT_MODEL
 
 # Long records fragment the GPU memory, without this a few of them run out of it at batch size 1
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
@@ -55,9 +58,10 @@ def load_samples(path: Path, processor=None) -> list[dict]:
     return samples
 
 
-def train_adapter(model_name: str, data_file: Path, name: str, out_dir: Path, epochs: int, seed: int,
-                  batch_size: int, effective_batch: int) -> Path:
-    """ Trains one LoRA adapter on a fresh copy of the base model and saves it to out_dir/name. """
+def train_adapter(model_name: str, data_file: Path, out_dir: Path, epochs: int, seed: int,
+                  batch_size: int, effective_batch: int, val_split: float = 0.1, patience: int = 3) -> Path:
+    """ Trains the LoRA adapter on a fresh copy of the base model. With a validation split the best epoch (lowest eval
+        loss) is saved to out_dir/best and returned, else the last epoch, out_dir/final. """
     import torch
     from gliner2 import AutoExtractor
     from gliner2.training.trainer import GLiNER2Trainer, TrainingConfig
@@ -69,33 +73,41 @@ def train_adapter(model_name: str, data_file: Path, name: str, out_dir: Path, ep
         raise SystemExit(f"{model_name} is not a GLiNER2.5 (boundary) checkpoint")
     examples = [InputExample(text=item["text"], entities=item["entities"])
                 for item in load_samples(data_file, model.processor)]
+    val_examples = []
+    if val_split > 0:
+        random.Random(seed).shuffle(examples)
+        n_val = max(1, round(len(examples) * val_split))
+        examples, val_examples = examples[n_val:], examples[:n_val]
     settings = dict(
-        output_dir=str(out_dir / name), experiment_name=name, num_epochs=epochs, seed=seed,
+        output_dir=str(out_dir), experiment_name=out_dir.name, num_epochs=epochs, seed=seed,
         batch_size=batch_size, gradient_accumulation_steps=effective_batch // batch_size, encoder_lr=1e-5, task_lr=5e-4,
         use_lora=True, lora_r=8, lora_alpha=16.0, lora_dropout=0.0, lora_target_modules=["encoder"],
-        save_adapter_only=True, eval_strategy="no", logging_steps=50,
+        save_adapter_only=True, logging_steps=50,
+        **(dict(eval_strategy="epoch", save_best=True, metric_for_best="eval_loss", greater_is_better=False,
+                early_stopping=True, early_stopping_patience=patience) if val_examples else dict(eval_strategy="no")),
     )
     settings.update(fp16=False, bf16=True)
 
-    logger.info("Training %s adapter on %d examples (%s)", name, len(examples), model_name)
+    logger.info("Training the adapter on %d examples, %d for validation (%s)", len(examples), len(val_examples), model_name)
     trainer = GLiNER2Trainer(model=model, config=TrainingConfig(**settings))
-    results = trainer.train(train_data=examples)
-    logger.info("%s adapter done in %.0f s", name, results["total_time_seconds"])
+    results = trainer.train(train_data=examples, eval_data=val_examples or None)
+    logger.info("Adapter done in %.0f s", results["total_time_seconds"])
 
     del trainer, model
     gc.collect()
     torch.cuda.empty_cache()
-    return out_dir / name / "final"
+    return out_dir / ("best" if val_examples and (out_dir / "best").exists() else "final")
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Train BelHisFirm LoRA adapters for GLiNER2.5.")
+    parser = argparse.ArgumentParser(description="Train a BelHisFirm LoRA adapter for GLiNER2.5.")
     parser.add_argument("--model", default=DEFAULT_MODEL, help="GLiNER2.5 base checkpoint")
-    parser.add_argument("--out", required=True, type=Path, help="Folder for the adapters")
-    parser.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR, help="Folder with train.json and train_<domain>.json")
-    parser.add_argument("--domains", nargs="+", choices=list(DOMAINS), default=list(DOMAINS), help="Domains to train")
-    parser.add_argument("--single", action="store_true", help="Train one adapter on all labels (train.json) instead")
+    parser.add_argument("--out", required=True, type=Path, help="Folder for the adapter")
+    parser.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR, help="Folder with train.json")
     parser.add_argument("--epochs", type=int, default=10)
+    parser.add_argument("--val-split", type=float, default=0.1,
+                        help="Fraction of train.json held out for validation, early stopping and the best epoch (0 = none)")
+    parser.add_argument("--patience", type=int, default=3, help="Epochs without a better eval loss before stopping")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--batch-size", type=int, default=1, choices=[1, 2, 4, 8, 16],
                         help="Per step, the records are long so 4 does not fit in 24 GB, gradients are accumulated up to "
@@ -106,12 +118,9 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
-    jobs = {SINGLE_ADAPTER: args.data_dir / "train.json"} if args.single else \
-        {domain: args.data_dir / f"train_{domain}.json" for domain in args.domains}
-    for name, data_file in jobs.items():
-        final = train_adapter(args.model, data_file, name, args.out, args.epochs, args.seed, args.batch_size,
-                              args.effective_batch)
-        logger.info("Saved %s", final)
+    final = train_adapter(args.model, args.data_dir / "train.json", args.out, args.epochs, args.seed, args.batch_size,
+                          args.effective_batch, args.val_split, args.patience)
+    logger.info("Saved %s", final)
     return 0
 
 
