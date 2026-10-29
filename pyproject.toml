@@ -29,11 +29,11 @@ dependencies = [
     "geoparser>=0.3.1",
     "text2num>=3.1.0",
     "python-dotenv>=1.2.2",
-    "gliner2[local]>=2.1.0",
 ]
 
 [project.scripts]
-belhisapp = "src.belhisapp.app:main"
+belhishaai = "src.belhisapp.app:main"
+preannotate = "src.utils.labelstudio_preannotate.app:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -41,3 +41,8 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]

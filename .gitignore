@@ -11,6 +11,8 @@ experiments/experiments/deformable-detr-finetuned/*
 images/*
 model/*
 output/*
+datasets/*
+runs/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
