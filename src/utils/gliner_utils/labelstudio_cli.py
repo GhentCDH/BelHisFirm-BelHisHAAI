@@ -37,7 +37,7 @@ import requests
 from src.processors.text_processor.cli import add_model_arguments, make_extractor
 from src.processors.text_processor.entity_extractor import (DEFAULT_CONTEXT_CHARS, DEFAULT_SPLIT, TEXT_LABELS, EntityExtractor, labelstudio_config,
                                                          load_labels)
-from src.processors.text_processor.ocr_input import Source, discover, keep_pages, run_ocr, select_pages
+from utils.gliner_utils.ocr_input import Source, discover, keep_pages, run_ocr, select_pages
 from src.utils.labelstudio_preannotate.client import LabelStudioClient
 
 logger = logging.getLogger(__name__)

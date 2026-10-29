@@ -1,0 +1,336 @@
+{
+  "entities": {
+    "date": {
+      "description": "Date expression in various formats, numeric or written out (e.g., '15 mars 1920', 'le trois avril mil neuf cent dix', '1920')"
+    },
+    "time_period": {
+      "description": "Legal or contractual duration of an organization or mandate expressed in time units, not a calendar date (e.g., 'pour 30 ans', 'durée illimitée', 'jusqu'en 1950')"
+    },
+    "organization_name": {
+      "description": "Full or abbreviated name of a company, society, or institution, including its legal form when that is part of the name (e.g., 'Société anonyme des Pêcheries à Vapeur', 'Société Générale', 'S.A. Métallurgique')",
+      "allow_nested": true
+    },
+    "corporate_body": {
+      "description": "Governing body of an organization or meeting convening body (e.g., 'conseil d'administration', 'assemblée générale', 'comité de direction')"
+    },
+    "legal_structure": {
+      "description": "Legal form of an organization (e.g., 'société anonyme', 'société coopérative', 'société en nom collectif'). Tag it also when it forms the first words of an organization name. 'société' without further specification is not enough. A deed or act is never a legal_structure.",
+      "allow_nested": true
+    },
+    "business_activity": {
+      "description": "Business purpose, mission, or commercial activity (e.g., 'exploitation minière', 'commerce de textiles', 'opérations bancaires et de crédit')"
+    },
+    "office_type": {
+      "description": "Type of organizational location or headquarters (e.g., 'siège social', 'siège administratif', 'bureau principal', 'siège')"
+    },
+    "legal_act": {
+      "description": "A deed, legal procedure, or legal action, including notarial deeds (e.g., 'acte', 'acte du ministère du notaire', 'constitution', 'dissolution', 'liquidation', 'modification des statuts', 'enregistrement au registre du commerce')"
+    },
+    "deed_number": {
+      "description": "Reference number or identifier for a legal deed (e.g., 'n° 5442', 'n° 2612 de 1920', 'acte 1234')"
+    },
+    "archive_reference": {
+      "description": "Registry, archive, or filing reference (e.g., 'volume 12, folio 45', 'registre du commerce n° 1234', 'dossier 567')"
+    },
+    "person": {
+      "description": "Name of an individual human being, without honorific. Includes full names, surnames used alone, and names with abbreviated given names (e.g., 'Jean Dupont', 'Dupont', 'Marie Curie', 'J.-B. Colbert')"
+    },
+    "honorific_title": {
+      "description": "Social title, honorific, or form of address (e.g., 'monsieur', 'm.', 'mm.', 'madame', 'me', 'veuve', 'vve')"
+    },
+    "occupation": {
+      "description": "A profession, trade, or type of work associated with a person, independent of a specific organizational role (e.g., 'notaire', 'négociant', 'rentier', 'ingénieur', 'avocat')"
+    },
+    "corporate_position": {
+      "description": "Official title or role within an organization (e.g., 'président', 'administrateur', 'directeur', 'scrutateur', 'commissaire')"
+    },
+    "number_of_shares": {
+      "description": "A numerical quantity indicating the amount of shares or ownership units held or issued. The number may appear in digits or words and typically accompanies terms such as 'actions' or 'parts sociales' (e.g., '2 000 actions', '500 parts sociales', 'mille actions')"
+    },
+    "number_of_votes": {
+      "description": "A numerical quantity indicating the amount of votes or voting rights held or issued. The number may appear in digits or words and typically accompanies terms such as 'voix' or 'droits de vote' (e.g., '20 voix', '500 droits de vote', 'honderd en acht stemmen')"
+    },
+    "share_class": {
+      "description": "Type, form, or class of shares (e.g., 'actions au porteur', 'actions nominatives', 'parts privilégiées')"
+    },
+    "share_nominal_value": {
+      "description": "Nominal (par) value per share or security (e.g., '500 francs', 'cent francs par action')"
+    },
+    "capital_category": {
+      "description": "Classification of share capital (e.g., 'capital social', 'capital libéré', 'capital souscrit', 'capital autorisé')"
+    },
+    "capital_numerical_value": {
+      "description": "Numerical value of share capital (e.g., '2 000 000 francs', '1 500 000 francs')"
+    },
+    "country": {
+      "description": "Name of a country or nation (e.g., 'Belgique', 'France', 'Congo')"
+    },
+    "city": {
+      "description": "Name of a city, town, or commune (e.g., 'Bruxelles', 'Paris', 'Anvers', 'Bruges')"
+    },
+    "street_address": {
+      "description": "Complete street address with number and street name (e.g., 'numéro 10 rue de la Paix', '25 avenue Louise')"
+    },
+    "building_name": {
+      "description": "Name of a building, property, estate, or landmark (e.g., 'Hôtel Métropole', 'Palais de Justice', 'Château de Laeken')"
+    }
+  },
+  "relations": [
+    {
+      "name": "has_occupation",
+      "description": "A person has a specific occupation.",
+      "head": "person",
+      "tail": "occupation",
+      "max_per_head": 2
+    },
+    {
+      "name": "serves_as",
+      "description": "A person serves as a specific corporate position within an organization.",
+      "head": "person",
+      "tail": "corporate_position",
+      "max_per_head": 2
+    },
+    {
+      "name": "holds_honorific_title",
+      "description": "A person holds a specific honorific title.",
+      "head": "person",
+      "tail": "honorific_title",
+      "max_per_head": 1
+    },
+    {
+      "name": "resides_at",
+      "description": "A person resides at a specific street address.",
+      "head": "person",
+      "tail": "street_address",
+      "max_per_head": 1,
+      "threshold": 0.4
+    },
+    {
+      "name": "resides_in",
+      "description": "A person resides in a specific city.",
+      "head": "person",
+      "tail": "city",
+      "max_per_head": 1,
+      "threshold": 0.3
+    },
+    {
+      "name": "in_country",
+      "description": "A city lies in a specific country.",
+      "head": "city",
+      "tail": "country",
+      "max_per_head": 1
+    },
+    {
+      "name": "serves_for",
+      "description": "A person holds a corporate position for a specific organization.",
+      "head": "person",
+      "tail": "organization_name",
+      "max_per_head": 1
+    },
+    {
+      "name": "acts_for",
+      "description": "A person acts on behalf of or represents an organization.",
+      "head": "person",
+      "tail": "organization_name"
+    },
+    {
+      "name": "holds_shares",
+      "description": "A person holds a specific number of shares.",
+      "head": "person",
+      "tail": "number_of_shares"
+    },
+    {
+      "name": "holds_votes",
+      "description": "A person holds a specific number of votes.",
+      "head": "person",
+      "tail": "number_of_votes"
+    },
+    {
+      "name": "has_legal_structure",
+      "description": "An organization has a specific legal structure (legal form), not a deed.",
+      "head": "organization_name",
+      "tail": "legal_structure",
+      "max_per_head": 1
+    },
+    {
+      "name": "has_business_activity",
+      "description": "An organization has a specific business purpose or activity.",
+      "head": "organization_name",
+      "tail": "business_activity"
+    },
+    {
+      "name": "has_duration",
+      "description": "An organization is established for a specific time period.",
+      "head": "organization_name",
+      "tail": "time_period",
+      "max_per_head": 1
+    },
+    {
+      "name": "has_corporate_body",
+      "description": "An organization has a specific corporate body.",
+      "head": "organization_name",
+      "tail": "corporate_body"
+    },
+    {
+      "name": "has_office",
+      "description": "An organization has an office or headquarters of a specific type.",
+      "head": "organization_name",
+      "tail": "office_type"
+    },
+    {
+      "name": "has_capital_category",
+      "description": "An organization has a specific category of capital.",
+      "head": "organization_name",
+      "tail": "capital_category"
+    },
+    {
+      "name": "issues_share_class",
+      "description": "An organization issues a specific class of shares.",
+      "head": "organization_name",
+      "tail": "share_class"
+    },
+    {
+      "name": "constituted_on",
+      "description": "An organization was constituted (founded) on a specific date.",
+      "head": "organization_name",
+      "tail": "date",
+      "max_per_head": 1
+    },
+    {
+      "name": "constituted_by",
+      "description": "An organization was constituted (founded) by a specific deed.",
+      "head": "organization_name",
+      "tail": "legal_act",
+      "max_per_head": 1
+    },
+    {
+      "name": "modified_by",
+      "description": "An organization's statutes were modified by a specific deed.",
+      "head": "organization_name",
+      "tail": "legal_act"
+    },
+    {
+      "name": "office_located_in",
+      "description": "An office is located in a specific city.",
+      "head": "office_type",
+      "tail": "city",
+      "max_per_head": 1
+    },
+    {
+      "name": "office_located_at",
+      "description": "An office is located at a specific street address.",
+      "head": "office_type",
+      "tail": "street_address",
+      "max_per_head": 1
+    },
+    {
+      "name": "office_in_building",
+      "description": "An office is located in a specific building.",
+      "head": "office_type",
+      "tail": "building_name",
+      "max_per_head": 1
+    },
+    {
+      "name": "has_capital_value",
+      "description": "A capital category has a specific numerical value.",
+      "head": "capital_category",
+      "tail": "capital_numerical_value",
+      "max_per_head": 1
+    },
+    {
+      "name": "has_nominal_value",
+      "description": "A share class has a specific nominal value.",
+      "head": "share_class",
+      "tail": "share_nominal_value",
+      "max_per_head": 1
+    },
+    {
+      "name": "shares_of_class",
+      "description": "A number of shares belongs to a specific share class.",
+      "head": "number_of_shares",
+      "tail": "share_class",
+      "max_per_head": 1
+    },
+    {
+      "name": "concerns",
+      "description": "A legal act concerns a specific organization.",
+      "head": "legal_act",
+      "tail": "organization_name"
+    },
+    {
+      "name": "dated",
+      "description": "A legal act is dated on a specific date.",
+      "head": "legal_act",
+      "tail": "date",
+      "threshold": 0.3
+    },
+    {
+      "name": "has_deed_number",
+      "description": "A legal act has a specific deed number.",
+      "head": "legal_act",
+      "tail": "deed_number",
+      "max_per_head": 1
+    },
+    {
+      "name": "recorded_in",
+      "description": "A legal act is recorded under a specific archive reference.",
+      "head": "legal_act",
+      "tail": "archive_reference"
+    },
+    {
+      "name": "executed_in",
+      "description": "A legal act was executed in a specific city.",
+      "head": "legal_act",
+      "tail": "city",
+      "max_per_head": 1
+    },
+    {
+      "name": "executed_by",
+      "description": "A legal act was executed by a specific person (e.g. a notary).",
+      "head": "legal_act",
+      "tail": "person"
+    },
+    {
+      "name": "meets_on",
+      "description": "A corporate body meets on a specific date (not the founding date of the organization).",
+      "head": "corporate_body",
+      "tail": "date",
+      "threshold": 0.6
+    },
+    {
+      "name": "meets_in",
+      "description": "A corporate body meets in a specific city (not the seat of the organization).",
+      "head": "corporate_body",
+      "tail": "city",
+      "max_per_head": 1
+    },
+    {
+      "name": "meets_at",
+      "description": "A corporate body meets in a specific building.",
+      "head": "corporate_body",
+      "tail": "building_name",
+      "max_per_head": 1
+    },
+    {
+      "name": "building_located_at",
+      "description": "A building is located at a specific street address.",
+      "head": "building_name",
+      "tail": "street_address",
+      "max_per_head": 1
+    },
+    {
+      "name": "building_located_in",
+      "description": "A building is located in a specific city.",
+      "head": "building_name",
+      "tail": "city",
+      "max_per_head": 1
+    },
+    {
+      "name": "address_in_city",
+      "description": "A street address lies in a specific city.",
+      "head": "street_address",
+      "tail": "city",
+      "max_per_head": 1
+    }
+  ]
+}
