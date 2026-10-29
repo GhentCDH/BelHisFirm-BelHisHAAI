@@ -3,9 +3,12 @@ detected regions drawn on it, to check the models by eye. Detection goes through
 VisionAnalyzer.detect_layout, so the boxes are exactly the ones the pipeline keeps, with its confidence
 thresholds (see ConfigParameter.yolo_confidence and yolo_label_confidence).
 
+Every page is also checked for missed text with src/checks/uncovered_ink.py: ink that lies outside every detected
+box is outlined in red on the saved image (whether or not the page counts as flagged), with its share of the page.
+
 Output (output/ is gitignored, so the images stay local):
     output/yolo_tests/<name>/<model>/<page>.jpg   one folder per --weights
-    output/yolo_tests/<name>/summary.txt          the sampled pages, the models and the region counts
+    output/yolo_tests/<name>/summary.txt          the sampled pages, the models and the region counts and the uncovered ink per page
 
 Usage:
     # The fine-tuned model next to the current one, on 20 random pages:
@@ -20,11 +23,15 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
+import cv2
 import numpy as np
 
 from PIL import Image
 
+from src.checks.uncovered_ink import Config as InkConfig, analyse, is_flagged
 from src.processors.record_processor.pipeline import IOManager, RecordManager
+
+RED = (255, 0, 0)  # the saved arrays are RGB
 
 
 def model_name(weights: Path) -> str:
@@ -76,6 +83,7 @@ def main() -> None:
         class_index = {label: index for index, label in analyzer.yolo_model.names.items()}
         (test_dir / name).mkdir(parents=True)
         totals = Counter()
+        flags = 0
         summary.append(f"{name} ({path})")
 
         for number, page_path in enumerate(page_paths, start=1):
@@ -88,15 +96,33 @@ def main() -> None:
             annotator = Annotator(np.array(image), line_width=3, pil=False)
             for region in regions:
                 annotator.box_label(region["bbox"], f"{region['label']} {region['confidence']:.2f}", color=colors(class_index[region["label"]]))
-            Image.fromarray(annotator.result()).save(test_dir / name / f"{page_path.stem}.jpg", quality=85)
+            drawn = annotator.result()
+
+            # Ink outside every detected box, always in red
+            ink_config = InkConfig()
+            scale = ink_config.work_width / image.width
+            boxes = np.array([region["bbox"] for region in regions], dtype=float).reshape(-1, 4)
+            ink = analyse(cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR), boxes, scale, ink_config)
+            for x, y, w, h in (component["bbox"] for component in ink["comps"]):
+                x1, y1, x2, y2 = (int(value / scale) for value in (x, y, x + w, y + h))
+                cv2.rectangle(drawn, (x1, y1), (x2, y2), RED, 4)
+            for component in ink["comps"]:
+                x, y = component["bbox"][:2]
+                cv2.putText(drawn, f"missed {component['frac'] * 100:.2f}% ~{component['lines']} lines",
+                            (int(x / scale), max(int(y / scale) - 10, 20)), cv2.FONT_HERSHEY_SIMPLEX, 1.2, RED, 3)
+            flagged = is_flagged(ink["total"], ink["top"], ink_config)
+            Image.fromarray(drawn).save(test_dir / name / f"{page_path.stem}.jpg", quality=85)
 
             counts = Counter(region["label"] for region in regions)
             totals += counts
             line = f"{page_path.name}: " + ", ".join(f"{label} {count}" for label, count in counts.most_common())
+            line += f" | uncovered ink {ink['total'] * 100:.2f}% in {len(ink['comps'])} areas" + (" FLAGGED" if flagged else "")
+            flags += flagged
             summary.append(f"  {line}")
             print(f"[{name} {number}/{len(page_paths)}] {line}")
 
-        summary += ["  TOTAL: " + ", ".join(f"{label} {count}" for label, count in totals.most_common()), ""]
+        summary += ["  TOTAL: " + ", ".join(f"{label} {count}" for label, count in totals.most_common()),
+                    f"  FLAGGED for missed text: {flags}/{len(page_paths)}", ""]
 
     (test_dir / "summary.txt").write_text("\n".join(summary))
     print(f"Saved to {test_dir}")
