@@ -2,6 +2,7 @@ import json
 from functools import lru_cache
 from pathlib import Path
 
+import torch
 from gliner2.joint_ie import JointIE, JointIEConfig
 
 SCHEMA_PATH = Path(__file__).parent / "IEschema.json"
@@ -12,8 +13,8 @@ DEFAULT_MODEL = "fastino/gliner2.5-multi-v1"
 
 
 def find_adapter(path):
-    """ The folder with the adapter files: the folder itself, or the trainer's final/ checkpoint inside it. """
-    for candidate in (Path(path), Path(path) / "final"):
+    """ The folder with the adapter files: the folder itself, or the trainer's best/ (else final/) checkpoint inside it. """
+    for candidate in (Path(path), Path(path) / "best", Path(path) / "final"):
         if (candidate / "adapter_config.json").exists():
             return candidate
     raise FileNotFoundError(f"No LoRA adapter in {path}")
@@ -22,15 +23,16 @@ def find_adapter(path):
 @lru_cache(maxsize=2)
 def get_joint(adapter=None, model_name=DEFAULT_MODEL):
     """ The Joint IE model, with a LoRA adapter (trained with gliner_train) merged into it when given. """
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     if adapter is None:
-        return JointIE.from_pretrained(model_name)
+        return JointIE.from_pretrained(model_name, device=device)
 
     from gliner2 import AutoExtractor
     from peft import PeftModel
 
     model = AutoExtractor.from_pretrained(model_name)
     model = PeftModel.from_pretrained(model, str(find_adapter(adapter))).merge_and_unload()
-    return JointIE(model)
+    return JointIE(model, device=device)
 
 
 def build_schema(path=SCHEMA_PATH, adapter=None):

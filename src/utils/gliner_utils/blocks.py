@@ -22,6 +22,17 @@ def load_labels(schema_path: Path = SCHEMA_PATH) -> dict[str, dict]:
     return json.loads(Path(schema_path).read_text(encoding="utf-8"))["entities"]
 
 
+def clean_value(value: str) -> str:
+    """ An entity text as it is in the sample text: the Label Studio export has a literal backslash-n (two characters)
+        where the span ran over a line break, that is a real newline in the text, and no whitespace around it. """
+    return value.replace("\\n", "\n").strip()
+
+
+def load_domains(schema_path: Path = SCHEMA_PATH) -> dict[str, list[str]]:
+    """ domain -> entity types, the groups one LoRA adapter each is trained on (every type is in one domain). """
+    return json.loads(Path(schema_path).read_text(encoding="utf-8"))["domains"]
+
+
 def labelstudio_config() -> str:
     """ Label Studio labeling config for the NER project the pre-annotations go to: a `label` Labels tag on a `text`
         Text tag (as in the training data export), grouped labels, and the text around the detection as read-only
@@ -120,12 +131,7 @@ def to_labelstudio_tasks(result: dict, record_folder: str, model_version: str) -
     return tasks
 
 
-def predict_blocks(blocks: list[dict], adapter=None) -> list[dict]:
-    """ The blocks with the entities of the Joint IE extractor (type as label, start/end in the block's text). """
-    from src.processors.text_processor.entity_extractor import build_schema, extract
-
-    schema = build_schema(adapter=adapter)
-    return [{**block, "entities": [
-        {"label": e["type"], "text": e["text"], "start": e["start"], "end": e["end"],
-         "confidence": round(float(e.get("confidence", 1.0)), 4)}
-        for e in extract(block["text"], schema, adapter)["entities"]]} for block in blocks]
+def predict_blocks(blocks: list[dict], extractor) -> list[dict]:
+    """ The blocks with the entities of an EntityExtractor (label, text, start/end in the block's text, confidence). """
+    entities = extractor.extract_texts([block["text"] for block in blocks])
+    return [{**block, "entities": found} for block, found in zip(blocks, entities)]

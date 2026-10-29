@@ -1,4 +1,4 @@
-""" Pre-annotates the detections of a folder with GLiNER2.5 (Joint IE, optionally with a LoRA adapter from gliner_train, --adapter) and sends them to Label Studio, every detection (YOLO
+""" Pre-annotates the detections of a folder with GLiNER2.5 (optionally with the LoRA adapter(s) of gliner_train, --adapter-dir) and sends them to Label Studio, every detection (YOLO
     text block with its OCR text) as a task of its own, so the entities can be corrected there and used as training
     data (see gliner_convert). Only the Text and Section-header detections (--labels), at most 10 per page
     (--max-per-page): the largest ones by surface, 20% section headers and 80% texts (--split), and at most
@@ -37,6 +37,7 @@ import requests
 from src.processors.text_processor.entity_extractor import SCHEMA_PATH
 from src.utils.gliner_utils.blocks import (DEFAULT_CONTEXT_CHARS, DEFAULT_SPLIT, TEXT_LABELS, build_blocks, labelstudio_config,
                                            load_labels, predict_blocks, to_labelstudio_tasks)
+from src.utils.gliner_utils.entities import EntityExtractor
 from src.utils.gliner_utils.ocr_input import Source, discover, keep_pages, run_ocr, select_pages
 from src.utils.labelstudio_preannotate.client import LabelStudioClient
 
@@ -81,8 +82,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--limit", type=int, default=None, help="Only the first N tasks (not in the project yet, with --commit)")
     parser.add_argument("--no-predictions", action="store_true", help="Plain tasks without entities, no model is loaded")
     parser.add_argument("--print-config", action="store_true", help="Print the labeling config for a new project and exit")
-    parser.add_argument("--adapter", type=Path, default=None,
-                        help="LoRA adapter trained with gliner_train (a folder, or its final/ checkpoint)")
+    parser.add_argument("--adapter-dir", type=Path, default=None,
+                        help="LoRA adapter trained with gliner_train: a single adapter, or a folder with one per domain")
     parser.add_argument("--schema", type=Path, default=SCHEMA_PATH, help="IEschema.json, the entity types of the project")
     return parser
 
@@ -148,12 +149,13 @@ def split(args: argparse.Namespace) -> dict[str, float]:
 
 def collect_tasks(args: argparse.Namespace, sources: list[Source]) -> list[dict]:
     """ The tasks of every detection of these records, with the entities of GLiNER unless --no-predictions. """
-    version = "none" if args.no_predictions else f"gliner2.5-joint{'+' + args.adapter.name if args.adapter else ''}"
+    extractor = None if args.no_predictions else EntityExtractor(adapter_dir=args.adapter_dir, schema_path=args.schema)
+    version = "none" if extractor is None else "+".join(["gliner2.5", *extractor.adapters])
     tasks = []
     for source in sources:
         blocks = build_blocks(source.ocr_data, block_labels(args), max_per_page(args), split(args), args.context_chars)
         blocks = [{**block, "entities": []} for block in blocks] if args.no_predictions \
-            else predict_blocks(blocks, args.adapter)
+            else predict_blocks(blocks, extractor)
         record = {"record_id": source.ocr_data.get("record_id"), "record_title": source.ocr_data.get("record_title"),
                   "blocks": blocks}
         tasks.extend(to_labelstudio_tasks(record, source.name, version))

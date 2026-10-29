@@ -337,5 +337,43 @@
       "tail": "city",
       "max_per_head": 1
     }
-  ]
+  ],
+  "domains": {
+    "date": [
+      "date",
+      "time_period"
+    ],
+    "organisation": [
+      "organization_name",
+      "corporate_body",
+      "legal_structure",
+      "business_activity",
+      "office_type"
+    ],
+    "legal": [
+      "legal_act",
+      "deed_number",
+      "archive_reference"
+    ],
+    "person": [
+      "person",
+      "honorific_title",
+      "occupation",
+      "corporate_position"
+    ],
+    "share": [
+      "number_of_shares",
+      "number_of_votes",
+      "share_class",
+      "share_nominal_value",
+      "capital_category",
+      "capital_numerical_value"
+    ],
+    "location": [
+      "country",
+      "city",
+      "street_address",
+      "building_name"
+    ]
+  }
 }

@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 from src.processors.text_processor.entity_extractor import SCHEMA_PATH
-from src.utils.gliner_utils.blocks import load_labels
+from src.utils.gliner_utils.blocks import clean_value, load_labels
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ def convert_export(tasks: list[dict], labels: list[str]) -> list[dict]:
             continue
         entities = {label: [] for label in labels}
         for value in results:
-            text = value["text"].strip()
+            text = clean_value(value["text"])
             for label in value.get("labels", []):
                 if label in entities and text and text not in entities[label]:
                     entities[label].append(text)
