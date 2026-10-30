@@ -35,11 +35,11 @@ def get_joint(adapter=None, model_name=DEFAULT_MODEL):
     return JointIE(model, device=device)
 
 
-def build_schema(path=SCHEMA_PATH, adapter=None):
+def build_schema(path=SCHEMA_PATH, adapter=None, model_name=DEFAULT_MODEL):
     """Build a JointIE schema from IEschema.json."""
     spec = json.loads(Path(path).read_text(encoding="utf-8"))
     # pass the full entity dicts so options such as allow_nested are applied
-    schema = get_joint(adapter).create_schema().entities(spec["entities"])
+    schema = get_joint(adapter, model_name).create_schema().entities(spec["entities"])
     for rel in spec["relations"]:
         schema = schema.relation(
             rel["name"],
@@ -55,10 +55,10 @@ def build_schema(path=SCHEMA_PATH, adapter=None):
     return schema
 
 
-def extract(text, schema=None, adapter=None):
+def extract(text, schema=None, adapter=None, model_name=DEFAULT_MODEL):
     """Jointly extract entities and relations from text. Returns a dict."""
-    schema = schema or build_schema(adapter=adapter)
-    result = get_joint(adapter).extract(
+    schema = schema or build_schema(adapter=adapter, model_name=model_name)
+    result = get_joint(adapter, model_name).extract(
         text,
         schema,
         config=JointIEConfig(optimizer="beam", beam_size=32, top_k_entities=64),

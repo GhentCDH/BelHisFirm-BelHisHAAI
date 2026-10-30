@@ -1,4 +1,4 @@
-""" Trains LoRA adapters for GLiNER2.5 (boundary architecture) on the entity types of IEschema.json: one adapter per
+""" Trains LoRA adapters for GLiNER2.5 (boundary architecture) or GLiNER2 (--model fastino/gliner2-multi-v1) on the entity types of IEschema.json: one adapter per
     domain (the "domains" of the schema, the default) or one for all entity types (--single). Used by entities.EntityExtractor
     (and labelstudio_cli --adapter-dir, gliner_eval), a single adapter also by the Joint IE extractor
     (entity_extractor.get_joint(adapter)).
@@ -110,8 +110,7 @@ def train_adapter(model_name: str, data_file: Path, out_dir: Path, epochs: int, 
     from gliner2.training.data import InputExample
 
     model = AutoExtractor.from_pretrained(model_name)
-    if getattr(model, "architecture", None) != "boundary":
-        raise SystemExit(f"{model_name} is not a GLiNER2.5 (boundary) checkpoint")
+    architecture = getattr(model, "architecture", None)
     examples = [InputExample(text=item["text"], entities=item["entities"])
                 for item in restrict(load_samples(data_file, model.processor), labels)]
     val_examples = []
@@ -127,9 +126,11 @@ def train_adapter(model_name: str, data_file: Path, out_dir: Path, epochs: int, 
         **(dict(eval_strategy="epoch", save_best=True, metric_for_best="eval_loss", greater_is_better=False,
                 early_stopping=True, early_stopping_patience=patience) if val_examples else dict(eval_strategy="no")),
     )
-    settings.update(fp16=False, bf16=True)
+    # GLiNER2.5 (boundary) trains in bf16, GLiNER2 (span) in fp16
+    settings.update(fp16=architecture != "boundary", bf16=architecture == "boundary")
 
-    logger.info("Training the adapter on %d examples, %d for validation (%s)", len(examples), len(val_examples), model_name)
+    logger.info("Training the adapter on %d examples, %d for validation (%s, %s)", len(examples), len(val_examples),
+                model_name, architecture)
     class Trainer(GLiNER2Trainer):
         def _log_metrics(self, metrics, prefix: str = "") -> None:
             """ The trainer only puts the train loss on its progress bar and never prints the eval metrics. """

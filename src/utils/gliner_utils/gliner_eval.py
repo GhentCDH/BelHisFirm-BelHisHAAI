@@ -15,6 +15,12 @@
     uv run python -m src.utils.gliner_utils.gliner_eval --adapter-dir model/gliner/adapters/v25_domains --base \\
         --run v2_base=fastino/gliner2-multi-v1 --run v2_domains=fastino/gliner2-multi-v1@model/gliner/adapters/v2
 
+    Does more training data help? Train adapters on the data before and after a round (gliner_train --data-dir ... --out
+    ...), then score both on the same untouched test set, with a bootstrap over the samples that says whether the
+    difference is more than noise (--baseline is the run the others are compared with):
+    uv run python -m src.utils.gliner_utils.gliner_eval --base --baseline v25_round1 \\
+        --adapter-dir model/gliner/adapters/v25_round1 model/gliner/adapters/v25_round2
+
     As in the tutorial notebook a prediction is correct when its (type, text) is in the gold entities of the same sample,
     compared lowercased and stripped, spans are not compared as the training data only has the entity texts. Counts are
     summed over the samples (micro). With --adapter-dir and --base both are scored on the same samples.
@@ -24,6 +30,7 @@ import argparse
 import gc
 import json
 import logging
+import random
 import sys
 from collections import Counter
 from pathlib import Path
@@ -57,17 +64,21 @@ def predict_entities(samples: list[dict], extractor) -> list[set]:
     return [{(e["label"], norm(e["text"])) for e in entities} for entities in found]
 
 
-def score(samples: list[dict], predicted: list[set], scope: set[str]) -> dict[str, Counter]:
-    """ Per entity type (and "ALL") the counts tp, fp and fn, over the entity types in scope only. """
+def score(samples: list[dict], predicted: list[set], scope: set[str]) -> tuple[dict[str, Counter], list[Counter]]:
+    """ Per entity type (and "ALL") the counts tp, fp and fn, over the entity types in scope only, and the counts of
+        every sample (for the bootstrap). """
     counts: dict[str, Counter] = {}
+    per_sample: list[Counter] = []
     for sample, pred in zip(samples, predicted):
+        per_sample.append(Counter())
         gold = {(label, norm(text)) for label, texts in sample["entities"].items() if label in scope for text in texts}
         pred = {item for item in pred if item[0] in scope}
         for item in gold | pred:
             kind = "tp" if item in gold and item in pred else "fn" if item in gold else "fp"
+            per_sample[-1][kind] += 1
             for key in (item[0], "ALL"):
                 counts.setdefault(key, Counter())[kind] += 1
-    return counts
+    return counts, per_sample
 
 
 def prf(count: Counter) -> tuple[float, float, float]:
@@ -75,6 +86,36 @@ def prf(count: Counter) -> tuple[float, float, float]:
     precision = tp / (tp + fp) if tp + fp else 0.0
     recall = tp / (tp + fn) if tp + fn else 0.0
     return precision, recall, 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+
+
+def bootstrap(per_sample: dict[str, list[Counter]], baseline: str | None, rounds: int = 1000, seed: int = 42) -> None:
+    """ The 95% interval of the overall F1 of every run, and of its difference with the baseline run, over samples
+        drawn with replacement (the same draws for every run, so the difference is paired). """
+    names = list(per_sample)
+    size = len(next(iter(per_sample.values())))
+    rng = random.Random(seed)
+    draws = [[rng.randrange(size) for _ in range(size)] for _ in range(rounds)]
+
+    def f1(counts: list[Counter], indexes: list[int]) -> float:
+        total = Counter()
+        for i in indexes:
+            total.update(counts[i])
+        return prf(total)[2]
+
+    scores = {name: sorted(f1(per_sample[name], draw) for draw in draws) for name in names}
+    lo, hi = int(rounds * 0.025), int(rounds * 0.975) - 1
+    print("\nOverall F1, 95% interval over the samples (bootstrap):")
+    for name in names:
+        print(f"  {name:<24}{f1(per_sample[name], list(range(size))):.3f}  [{scores[name][lo]:.3f}, {scores[name][hi]:.3f}]")
+    if baseline in per_sample and len(names) > 1:
+        print(f"Difference with {baseline} (paired):")
+        for name in names:
+            if name == baseline:
+                continue
+            diffs = sorted(f1(per_sample[name], d) - f1(per_sample[baseline], d) for d in draws)
+            verdict = "better" if diffs[lo] > 0 else "worse" if diffs[hi] < 0 else "not clearly different"
+            print(f"  {name:<24}{f1(per_sample[name], list(range(size))) - f1(per_sample[baseline], list(range(size))):+.3f}"
+                  f"  [{diffs[lo]:+.3f}, {diffs[hi]:+.3f}]  {verdict}")
 
 
 def report(results: dict[str, dict[str, Counter]], labels: list[str]) -> None:
@@ -94,8 +135,10 @@ def report(results: dict[str, dict[str, Counter]], labels: list[str]) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Score GLiNER2.5 entity extraction on a test set.")
     parser.add_argument("--test", type=Path, default=DEFAULT_TEST, help="Test samples, {text, entities}")
-    parser.add_argument("--adapter-dir", type=Path, default=None,
-                        help="A single LoRA adapter, or a folder with one per domain (see gliner_train)")
+    parser.add_argument("--adapter-dir", type=Path, nargs="+", default=[],
+                        help="A single LoRA adapter, or a folder with one per domain (see gliner_train), several to compare")
+    parser.add_argument("--baseline", default=None,
+                        help="Name of the run the others are compared with in the bootstrap (default: the first one)")
     parser.add_argument("--base", action="store_true", help="Also (or only, without --adapter-dir) score the base model")
     parser.add_argument("--threshold", type=float, default=None,
                         help="Minimum confidence for every type (default: 0.5, or the `threshold` of the schema)")
@@ -117,8 +160,8 @@ def main(argv: list[str] | None = None) -> int:
     runs = {}  # name -> (model, adapter folder)
     if args.base or not (args.adapter_dir or args.v2 or args.v2_base or args.run):
         runs["base"] = (DEFAULT_MODEL, None)
-    if args.adapter_dir:
-        runs[args.adapter_dir.name] = (DEFAULT_MODEL, args.adapter_dir)
+    for folder in args.adapter_dir:
+        runs[folder.name] = (DEFAULT_MODEL, folder)
     if args.v2_base:
         runs["v2_base"] = (V2_MODEL, None)
     if args.v2:
@@ -129,6 +172,7 @@ def main(argv: list[str] | None = None) -> int:
         runs[name] = (model, Path(folder) if folder else None)
 
     results = {}
+    per_sample = {}
     for name, (model_name, adapter_dir) in runs.items():
         print(f"Scoring {name} on {len(samples)} samples ...", flush=True)
         if args.joint:
@@ -143,8 +187,9 @@ def main(argv: list[str] | None = None) -> int:
             predicted = predict_entities(samples, extractor)
             del extractor
             gc.collect()
-        results[name] = score(samples, predicted, scope)
+        results[name], per_sample[name] = score(samples, predicted, scope)
     report(results, labels)
+    bootstrap(per_sample, args.baseline or next(iter(results)))
 
     if args.out:
         args.out.write_text(json.dumps({name: {label: dict(c) | dict(zip(("precision", "recall", "f1"), prf(c)))
